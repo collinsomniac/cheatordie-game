@@ -32,6 +32,8 @@ startButton.addEventListener('click', async () => {
       upgradePanel: requireElement('#upgrade-panel'),
       upgradeCards: requireElement('#upgrade-cards'),
       toast: requireElement('#toast'),
+      hitMarker: requireElement('#hit-marker'),
+      damageVignette: requireElement('#damage-vignette'),
     };
 
     const { engine, backend } = await createEngine(canvas);

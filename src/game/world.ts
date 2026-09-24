@@ -30,6 +30,9 @@ export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBun
       powerPreference: 'high-performance',
     });
     await engine.initAsync();
+    // Babylon's non-compatibility WebGPU path records/reuses render bundles and
+    // reduces CPU command overhead. ?compat=1 is the regression escape hatch.
+    engine.compatibilityMode = new URLSearchParams(location.search).get('compat') === '1';
     return { engine, backend: 'webgpu' };
   }
 

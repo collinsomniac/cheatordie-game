@@ -22,6 +22,8 @@ export interface HUDRefs {
   upgradePanel: HTMLElement;
   upgradeCards: HTMLElement;
   toast: HTMLElement;
+  hitMarker: HTMLElement;
+  damageVignette: HTMLElement;
 }
 
 export class Game {
@@ -90,7 +92,10 @@ export class Game {
     return {
       getTargets: (robot) => this.getTargets(robot),
       resolveShot: (robot, origin, direction, range) => this.resolveShot(robot, origin, direction, range),
-      onDamage: () => undefined,
+      onDamage: (robot, _amount, attacker) => {
+        if (robot === this.player) this.pulseDamage();
+        if (attacker === this.player && robot !== this.player) this.pulseHit();
+      },
       onDeath: (robot) => {
         if (robot === this.player) this.playerDied();
       },
@@ -104,7 +109,10 @@ export class Game {
 
   private resolveShot(shooter: RobotEntity, origin: Vector3, direction: Vector3, range: number): ShotResult {
     const ray = new Ray(origin, direction, range);
-    const hit = this.scene.pickWithRay(ray, (mesh: AbstractMesh) => mesh.isPickable && mesh.isEnabled());
+    const hit = this.scene.pickWithRay(
+      ray,
+      (mesh: AbstractMesh) => mesh.isPickable && mesh.isEnabled() && mesh.metadata?.robotId !== shooter.id,
+    );
     if (!hit?.hit || !hit.pickedPoint || !hit.pickedMesh) return { victim: null, hitPoint: origin.add(direction.scale(range)) };
     const robotId = hit.pickedMesh.metadata?.robotId as string | undefined;
     const victim = robotId ? this.robots.find((candidate) => candidate.id === robotId && candidate !== shooter && candidate.alive) ?? null : null;
@@ -283,6 +291,18 @@ export class Game {
     for (const tracer of this.tracerPool) {
       if (tracer.mesh.isEnabled() && now >= tracer.expiresAt) tracer.mesh.setEnabled(false);
     }
+  }
+
+  private pulseHit(): void {
+    this.hud.hitMarker.classList.remove('is-active');
+    void this.hud.hitMarker.offsetWidth;
+    this.hud.hitMarker.classList.add('is-active');
+  }
+
+  private pulseDamage(): void {
+    this.hud.damageVignette.classList.remove('is-active');
+    void this.hud.damageVignette.offsetWidth;
+    this.hud.damageVignette.classList.add('is-active');
   }
 
   private toast(message: string): void {

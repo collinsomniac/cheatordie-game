@@ -28,6 +28,45 @@ const BASE_STATS: RobotStats = {
   momentumRetention: 0.72,
 };
 
+interface RobotPalette {
+  body: StandardMaterial;
+  dark: StandardMaterial;
+  glow: StandardMaterial;
+}
+
+const ROBOT_PALETTES = new WeakMap<Scene, Map<string, RobotPalette>>();
+
+function getRobotPalette(scene: Scene, color: Color3): RobotPalette {
+  let sceneCache = ROBOT_PALETTES.get(scene);
+  if (!sceneCache) {
+    sceneCache = new Map<string, RobotPalette>();
+    ROBOT_PALETTES.set(scene, sceneCache);
+  }
+
+  const key = `${color.r.toFixed(3)}:${color.g.toFixed(3)}:${color.b.toFixed(3)}`;
+  const cached = sceneCache.get(key);
+  if (cached) return cached;
+
+  const body = new StandardMaterial(`robot-body-${key}`, scene);
+  body.diffuseColor = color;
+  body.specularColor = Color3.Black();
+  body.freeze();
+
+  const dark = new StandardMaterial(`robot-dark-${key}`, scene);
+  dark.diffuseColor = color.scale(0.34);
+  dark.specularColor = Color3.Black();
+  dark.freeze();
+
+  const glow = new StandardMaterial(`robot-glow-${key}`, scene);
+  glow.diffuseColor = Color3.Black();
+  glow.emissiveColor = color.scale(0.9);
+  glow.freeze();
+
+  const palette = { body, dark, glow };
+  sceneCache.set(key, palette);
+  return palette;
+}
+
 export interface ShotResult {
   victim: RobotEntity | null;
   hitPoint: Vector3;
@@ -59,6 +98,7 @@ export class RobotEntity {
   private fireCooldown = 0;
   private cameraToggleLatch = false;
   private readonly callbacks: RobotCallbacks;
+  private palette!: RobotPalette;
 
   constructor(
     private readonly scene: Scene,
@@ -100,6 +140,8 @@ export class RobotEntity {
 
   addMutation(id: MutationId): void {
     this.loadout.add(id);
+    const stack = this.loadout.count(id);
+    if (stack <= 3) this.attachMutationVisual(id, stack);
   }
 
   update(dt: number): void {
@@ -153,39 +195,65 @@ export class RobotEntity {
 
   dispose(): void {
     this.character.dispose();
-    this.root.dispose(false, true);
+    // Materials are deliberately shared across robots and owned by the scene cache.
+    this.root.dispose(false, false);
   }
 
   private createBody(color: Color3): void {
-    const bodyMaterial = new StandardMaterial(`${this.id}-body-mat`, this.scene);
-    bodyMaterial.diffuseColor = color;
-    bodyMaterial.specularColor = Color3.Black();
-    const darkMaterial = new StandardMaterial(`${this.id}-dark-mat`, this.scene);
-    darkMaterial.diffuseColor = color.scale(0.34);
-    darkMaterial.specularColor = Color3.Black();
-    const glowMaterial = new StandardMaterial(`${this.id}-glow-mat`, this.scene);
-    glowMaterial.diffuseColor = Color3.Black();
-    glowMaterial.emissiveColor = color.scale(0.85);
+    this.palette = getRobotPalette(this.scene, color);
+    this.addBox('torso', new Vector3(0.82, 0.72, 0.42), new Vector3(0, 1.05, 0), this.palette.dark);
+    this.addBox('head', new Vector3(0.56, 0.42, 0.52), new Vector3(0, 1.66, 0), this.palette.body);
+    this.addBox('visor', new Vector3(0.43, 0.10, 0.04), new Vector3(0, 1.7, 0.28), this.palette.glow, false);
+    this.addBox('arm-l', new Vector3(0.21, 0.72, 0.21), new Vector3(-0.57, 1.03, 0), this.palette.body);
+    this.addBox('arm-r', new Vector3(0.21, 0.72, 0.21), new Vector3(0.57, 1.03, 0), this.palette.body);
+    this.addBox('leg-l', new Vector3(0.25, 0.72, 0.28), new Vector3(-0.23, 0.35, 0), this.palette.body);
+    this.addBox('leg-r', new Vector3(0.25, 0.72, 0.28), new Vector3(0.23, 0.35, 0), this.palette.body);
+    this.addBox('gun', new Vector3(0.16, 0.17, 0.74), new Vector3(0.51, 1.12, 0.47), this.palette.dark);
+  }
 
-    const addBox = (name: string, size: Vector3, position: Vector3, material = bodyMaterial): Mesh => {
-      const mesh = MeshBuilder.CreateBox(`${this.id}-${name}`, { width: size.x, height: size.y, depth: size.z }, this.scene);
-      mesh.parent = this.root;
-      mesh.position.copyFrom(position);
-      mesh.material = material;
-      mesh.isPickable = true;
-      mesh.metadata = { robotId: this.id };
-      this.meshParts.push(mesh);
-      return mesh;
-    };
+  private addBox(
+    name: string,
+    size: Vector3,
+    position: Vector3,
+    material: StandardMaterial,
+    pickable = true,
+  ): Mesh {
+    const mesh = MeshBuilder.CreateBox(`${this.id}-${name}`, { width: size.x, height: size.y, depth: size.z }, this.scene);
+    mesh.parent = this.root;
+    mesh.position.copyFrom(position);
+    mesh.material = material;
+    mesh.isPickable = pickable;
+    if (pickable) mesh.metadata = { robotId: this.id };
+    this.meshParts.push(mesh);
+    return mesh;
+  }
 
-    addBox('torso', new Vector3(0.82, 0.72, 0.42), new Vector3(0, 1.05, 0), darkMaterial);
-    addBox('head', new Vector3(0.56, 0.42, 0.52), new Vector3(0, 1.66, 0), bodyMaterial);
-    addBox('visor', new Vector3(0.43, 0.10, 0.04), new Vector3(0, 1.7, 0.28), glowMaterial).isPickable = false;
-    addBox('arm-l', new Vector3(0.21, 0.72, 0.21), new Vector3(-0.57, 1.03, 0), bodyMaterial);
-    addBox('arm-r', new Vector3(0.21, 0.72, 0.21), new Vector3(0.57, 1.03, 0), bodyMaterial);
-    addBox('leg-l', new Vector3(0.25, 0.72, 0.28), new Vector3(-0.23, 0.35, 0), bodyMaterial);
-    addBox('leg-r', new Vector3(0.25, 0.72, 0.28), new Vector3(0.23, 0.35, 0), bodyMaterial);
-    addBox('gun', new Vector3(0.16, 0.17, 0.74), new Vector3(0.51, 1.12, 0.47), darkMaterial);
+  private attachMutationVisual(id: MutationId, stack: number): void {
+    const offset = (stack - 1) * 0.055;
+    switch (id) {
+      case 'aim-assist':
+        this.addBox(`aim-l-${stack}`, new Vector3(0.09, 0.10, 0.22), new Vector3(-0.20 - offset, 1.91, 0.05), this.palette.glow, false);
+        this.addBox(`aim-r-${stack}`, new Vector3(0.09, 0.10, 0.22), new Vector3(0.20 + offset, 1.91, 0.05), this.palette.glow, false);
+        break;
+      case 'triggerbot':
+        this.addBox(`trigger-servo-${stack}`, new Vector3(0.12, 0.12, 0.20), new Vector3(0.64 + offset, 1.20, 0.56), this.palette.glow, false);
+        break;
+      case 'speedhack':
+        this.addBox(`speed-fin-l-${stack}`, new Vector3(0.08, 0.33, 0.34), new Vector3(-0.39 - offset, 0.31, -0.02), this.palette.glow, false);
+        this.addBox(`speed-fin-r-${stack}`, new Vector3(0.08, 0.33, 0.34), new Vector3(0.39 + offset, 0.31, -0.02), this.palette.glow, false);
+        break;
+      case 'bhop':
+        this.addBox(`bhop-l-${stack}`, new Vector3(0.30, 0.08, 0.40), new Vector3(-0.23, 0.02 + offset, 0.06), this.palette.dark, false);
+        this.addBox(`bhop-r-${stack}`, new Vector3(0.30, 0.08, 0.40), new Vector3(0.23, 0.02 + offset, 0.06), this.palette.dark, false);
+        break;
+      case 'recoil-null':
+        this.addBox(`counterweight-l-${stack}`, new Vector3(0.18, 0.16, 0.30), new Vector3(-0.62 - offset, 1.28, -0.14), this.palette.dark, false);
+        this.addBox(`counterweight-r-${stack}`, new Vector3(0.18, 0.16, 0.30), new Vector3(0.62 + offset, 1.28, -0.14), this.palette.dark, false);
+        break;
+      case 'overclock':
+        this.addBox(`overclock-core-${stack}`, new Vector3(0.46, 0.25, 0.12), new Vector3(0, 1.12 + offset, -0.28), this.palette.glow, false);
+        break;
+    }
   }
 
   private move(intent: ControlIntent, stats: RobotStats, dt: number): void {

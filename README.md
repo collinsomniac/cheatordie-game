@@ -31,8 +31,12 @@ The first mobile development target is a standard Bluetooth/USB-C gamepad on iPh
 
 The central invariant is **entity parity**. `RobotEntity` contains the body, physics, weapon, health, mutation loadout, and movement implementation. Player and enemy behavior enter through the same `RobotController -> ControlIntent` boundary. That keeps future bot takeover, assistance, replay, multiplayer, and cheat/mutation systems from forking the gameplay code.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), and [`docs/RESEARCH.md`](docs/RESEARCH.md).
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), [`docs/RESEARCH.md`](docs/RESEARCH.md), [`docs/INSPIRATION.md`](docs/INSPIRATION.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), and [`docs/PLAYTEST.md`](docs/PLAYTEST.md).
 
 ## GitHub Pages
 
 The repository includes an Actions workflow that builds Vite and publishes `dist/`. The Vite base path is pinned to `/cheatordie-game/` for project Pages hosting.
+
+**One-time repository setting:** Pages is currently not enabled for this new repository. In GitHub open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Then rerun **Deploy GitHub Pages** (or make any new commit). The expected public URL is `https://collinsomniac.github.io/cheatordie-game/`.
+
+Useful regression switches: `?backend=webgl` forces WebGL2; `?compat=1` keeps Babylon's WebGPU compatibility mode enabled.
