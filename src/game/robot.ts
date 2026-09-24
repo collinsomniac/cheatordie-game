@@ -150,7 +150,7 @@ export class RobotEntity {
     if (!slot) return null;
     this.cachedStats = this.loadout.applyStats(BASE_STATS);
     const stack = this.loadout.count(id);
-    if (stack <= 3) this.attachMutationVisual(id, stack);
+    this.attachMutationVisual(id, slot, stack);
     return slot;
   }
 
@@ -240,30 +240,72 @@ export class RobotEntity {
     return mesh;
   }
 
-  private attachMutationVisual(id: MutationId, stack: number): void {
-    const offset = (stack - 1) * 0.055;
+  private attachMutationVisual(id: MutationId, slot: BodySlot, stack: number): void {
+    const layer = (stack - 1) * 0.035;
+    const side = slot.endsWith('left') ? -1 : slot.endsWith('right') ? 1 : 0;
+
     switch (id) {
       case 'aim-assist':
-        this.addBox(`aim-l-${stack}`, new Vector3(0.09, 0.10, 0.22), new Vector3(-0.20 - offset, 1.91, 0.05), this.palette.glow, false);
-        this.addBox(`aim-r-${stack}`, new Vector3(0.09, 0.10, 0.22), new Vector3(0.20 + offset, 1.91, 0.05), this.palette.glow, false);
+        if (slot === 'head') {
+          this.addBox(`aim-head-${stack}`, new Vector3(0.24, 0.10, 0.22), new Vector3(0, 1.92, 0.03), this.palette.glow, false);
+        } else {
+          this.addBox(
+            `aim-${slot}-${stack}`,
+            new Vector3(0.10, 0.15, 0.24),
+            new Vector3(side * 0.36, 1.72 + layer, 0.03),
+            this.palette.glow,
+            false,
+          );
+        }
         break;
       case 'triggerbot':
-        this.addBox(`trigger-servo-${stack}`, new Vector3(0.12, 0.12, 0.20), new Vector3(0.64 + offset, 1.20, 0.56), this.palette.glow, false);
+        this.addBox(
+          `trigger-${slot}-${stack}`,
+          new Vector3(0.13, 0.13, 0.21),
+          new Vector3(side * 0.66, 1.18 + layer, 0.34),
+          this.palette.glow,
+          false,
+        );
         break;
       case 'speedhack':
-        this.addBox(`speed-fin-l-${stack}`, new Vector3(0.08, 0.33, 0.34), new Vector3(-0.39 - offset, 0.31, -0.02), this.palette.glow, false);
-        this.addBox(`speed-fin-r-${stack}`, new Vector3(0.08, 0.33, 0.34), new Vector3(0.39 + offset, 0.31, -0.02), this.palette.glow, false);
+        this.addBox(
+          `speed-${slot}-${stack}`,
+          new Vector3(0.09, 0.38, 0.34),
+          new Vector3(side * 0.39, 0.31, -0.03),
+          this.palette.glow,
+          false,
+        );
         break;
       case 'bhop':
-        this.addBox(`bhop-l-${stack}`, new Vector3(0.30, 0.08, 0.40), new Vector3(-0.23, 0.02 + offset, 0.06), this.palette.dark, false);
-        this.addBox(`bhop-r-${stack}`, new Vector3(0.30, 0.08, 0.40), new Vector3(0.23, 0.02 + offset, 0.06), this.palette.dark, false);
+        if (slot === 'core') {
+          this.addBox(`bhop-core-${stack}`, new Vector3(0.38, 0.16, 0.12), new Vector3(0, 0.82, -0.27), this.palette.glow, false);
+        } else {
+          this.addBox(
+            `bhop-${slot}-${stack}`,
+            new Vector3(0.31, 0.08, 0.42),
+            new Vector3(side * 0.23, 0.02 + layer, 0.06),
+            this.palette.dark,
+            false,
+          );
+        }
         break;
       case 'recoil-null':
-        this.addBox(`counterweight-l-${stack}`, new Vector3(0.18, 0.16, 0.30), new Vector3(-0.62 - offset, 1.28, -0.14), this.palette.dark, false);
-        this.addBox(`counterweight-r-${stack}`, new Vector3(0.18, 0.16, 0.30), new Vector3(0.62 + offset, 1.28, -0.14), this.palette.dark, false);
+        this.addBox(
+          `counterweight-${slot}-${stack}`,
+          new Vector3(0.18, 0.17, 0.31),
+          new Vector3(side * 0.64, 1.29 + layer, -0.13),
+          this.palette.dark,
+          false,
+        );
         break;
       case 'overclock':
-        this.addBox(`overclock-core-${stack}`, new Vector3(0.46, 0.25, 0.12), new Vector3(0, 1.12 + offset, -0.28), this.palette.glow, false);
+        this.addBox(
+          `overclock-${slot}-${stack}`,
+          slot === 'core' ? new Vector3(0.46, 0.25, 0.12) : new Vector3(0.22, 0.34, 0.14),
+          slot === 'core' ? new Vector3(0, 1.10, -0.28) : new Vector3(-0.45, 1.25, -0.20),
+          this.palette.glow,
+          false,
+        );
         break;
     }
   }

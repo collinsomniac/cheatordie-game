@@ -27,3 +27,13 @@ export function runSeedFromLocation(): number {
   crypto.getRandomValues(entropy);
   return entropy[0] ?? 1;
 }
+
+export function mixSeed(base: number, a: number, b = 0): number {
+  let value = (base ^ Math.imul(a + 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0xc2b2ae35, 0x27d4eb2f)) >>> 0;
+  value ^= value >>> 16;
+  value = Math.imul(value, 0x7feb352d);
+  value ^= value >>> 15;
+  value = Math.imul(value, 0x846ca68b);
+  value ^= value >>> 16;
+  return value >>> 0;
+}

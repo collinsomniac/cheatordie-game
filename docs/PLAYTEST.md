@@ -69,6 +69,6 @@ one thing that felt bad:
 
 - `?backend=webgl` — force WebGL2 for backend comparison.
 - `?compat=1` — keep Babylon WebGPU compatibility mode enabled instead of the faster render-bundle path.
-- `?seed=12345` — reproduce the same upgrade order and bot random decisions. Keep the seed fixed when comparing movement/AI/rendering changes.
+- `?seed=12345` — reproduce the same upgrade sequence. Each bot gets a deterministic per-wave/per-index random stream as well, so AI randomness is isolated from upgrade generation; exact bot motion still depends on the player's actions and resulting simulation state. Keep the seed fixed when comparing movement/AI/rendering changes.
 
 Do not change both switches at once when isolating a regression.
