@@ -46,8 +46,13 @@ export class InputManager {
   }
 
   requestPointerLock(): void {
-    if (document.pointerLockElement !== this.canvas && 'requestPointerLock' in this.canvas) {
-      void this.canvas.requestPointerLock();
+    if (document.pointerLockElement === this.canvas || !('requestPointerLock' in this.canvas)) return;
+    try {
+      // iOS/WebKit may expose Pointer Lock while refusing a particular request.
+      // A rejected lock is non-fatal because gamepad input does not depend on it.
+      void Promise.resolve(this.canvas.requestPointerLock()).catch(() => undefined);
+    } catch {
+      // Older/partial implementations can throw synchronously.
     }
   }
 

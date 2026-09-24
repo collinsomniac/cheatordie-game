@@ -31,7 +31,7 @@ The first mobile development target is a standard Bluetooth/USB-C gamepad on iPh
 
 The central invariant is **entity parity**. `RobotEntity` contains the body, physics, weapon, health, mutation loadout, and movement implementation. Player and enemy behavior enter through the same `RobotController -> ControlIntent` boundary. That keeps future bot takeover, assistance, replay, multiplayer, and cheat/mutation systems from forking the gameplay code.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), [`docs/RESEARCH.md`](docs/RESEARCH.md), [`docs/INSPIRATION.md`](docs/INSPIRATION.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), and [`docs/PLAYTEST.md`](docs/PLAYTEST.md).
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), [`docs/RESEARCH.md`](docs/RESEARCH.md), [`docs/INSPIRATION.md`](docs/INSPIRATION.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/PLAYTEST.md`](docs/PLAYTEST.md), and [`docs/STATUS.md`](docs/STATUS.md).
 
 ## GitHub Pages
 
@@ -39,4 +39,4 @@ The repository includes an Actions workflow that builds Vite and publishes `dist
 
 Pages is enabled and deployment is handled by GitHub Actions. The current build is published at **https://collinsomniac.github.io/cheatordie-game/**.
 
-Useful regression switches: `?backend=webgl` forces WebGL2; `?compat=1` keeps Babylon's WebGPU compatibility mode enabled.
+Useful regression switches: `?backend=webgl` forces WebGL2; `?backend=webgpu` forces WebGPU (and surfaces initialization failures instead of falling back); `?compat=1` keeps Babylon's WebGPU compatibility mode enabled; `?seed=12345` fixes the run seed for comparisons.
