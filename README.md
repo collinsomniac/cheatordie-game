@@ -39,4 +39,4 @@ The repository includes an Actions workflow that builds Vite and publishes `dist
 
 Pages is enabled and deployment is handled by GitHub Actions. The current build is published at **https://collinsomniac.github.io/cheatordie-game/**.
 
-Useful regression switches: `?backend=webgl` forces WebGL2; `?backend=webgpu` forces WebGPU (and surfaces initialization failures instead of falling back); `?compat=1` keeps Babylon's WebGPU compatibility mode enabled; `?seed=12345` fixes the run seed for comparisons.
+Useful regression switches: `?backend=webgl` forces WebGL2; `?backend=webgpu` forces WebGPU (and surfaces initialization failures instead of falling back); `?physics=kinematic` bypasses Havok; `?physics=havok` forces Havok; `?compat=1` keeps Babylon's WebGPU compatibility mode enabled; `?seed=12345` fixes the run seed for comparisons. Boot failures also expose a **SAFE MODE** button that reloads with WebGL2 + kinematic physics.

@@ -51,6 +51,9 @@ h1 em { color: var(--danger); font-style: normal; font-size: .62em; }
 .panel p { max-width: 55ch; color: #aab8b0; line-height: 1.5; font-size: 12px; }
 .panel button { cursor: pointer; border: 0; background: var(--acid); color: #06100a; font-weight: 900; padding: 12px 18px; letter-spacing: .08em; }
 .panel button:hover { filter: brightness(1.06); }
+.boot-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.panel .button--secondary { background: transparent; color: var(--acid); border: 1px solid var(--line); }
+.panel--start p { white-space: pre-wrap; }
 .controls { margin-top: 14px; color: #75837c; line-height: 1.6; font-size: 9px; }
 .controls b { color: #b9c7bf; }
 .panel--upgrade { left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(920px, calc(100vw - 28px)); padding: clamp(16px, 3vw, 28px); }

@@ -4,9 +4,18 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game');
 const startPanel = document.querySelector<HTMLElement>('#start-panel');
 const startButton = document.querySelector<HTMLButtonElement>('#start-button');
 const backendLabel = document.querySelector<HTMLElement>('#backend-label');
+const safeModeButton = document.querySelector<HTMLButtonElement>('#safe-mode-button');
 const perf = document.querySelector<HTMLElement>('#perf');
 
-if (!canvas || !startPanel || !startButton || !backendLabel || !perf) throw new Error('Required game DOM missing');
+if (!canvas || !startPanel || !startButton || !backendLabel || !safeModeButton || !perf) throw new Error('Required game DOM missing');
+
+safeModeButton.addEventListener('click', () => {
+  const params = new URLSearchParams(location.search);
+  params.set('backend', 'webgl');
+  params.set('physics', 'kinematic');
+  params.delete('compat');
+  location.search = params.toString();
+});
 
 let running = false;
 
@@ -46,6 +55,7 @@ startButton.addEventListener('click', async () => {
     const adaptive = new AdaptiveResolution(engine);
     const game = new Game(scene, canvas, hud, physicsMode);
     running = true;
+    safeModeButton.classList.add('hidden');
     document.body.classList.add('game-running');
     startPanel.classList.add('hidden');
     game.input.requestPointerLock();
@@ -74,6 +84,7 @@ startButton.addEventListener('click', async () => {
     backendLabel.textContent = 'BOOT ERROR';
     startButton.disabled = false;
     startButton.textContent = 'RETRY BOOT';
+    safeModeButton.classList.remove('hidden');
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error && error.stack ? `\n${error.stack.split('\n').slice(0, 4).join('\n')}` : '';
     const body = startPanel.querySelector('p');
