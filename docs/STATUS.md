@@ -7,9 +7,10 @@ Live build: https://collinsomniac.github.io/cheatordie-game/
 ## What is real today
 
 - GitHub Pages deployment from `main` through Actions is working.
+- CI now boots the built app in headless Chromium after compilation, testing both forced WebGL2 + kinematic physics and forced WebGL2 + Havok. This catches runtime boot failures that TypeScript/Vite alone cannot detect.
 - CI uses a committed lockfile and `npm ci`, then TypeScript + Vite production build + bundle/path verification.
 - WebGPU is preferred, WebGL2 is a runtime fallback, and `?backend=webgpu` / `?backend=webgl` can force a backend for regression testing.
-- Havok WASM drives the shared robot character controller and static arena collisions.
+- Havok WASM is the preferred physics path. If Havok initialization fails, the game automatically falls back to Babylon's native kinematic mesh collisions; `?physics=havok` and `?physics=kinematic` can force either path for diagnosis.
 - Player and bots are the same `RobotEntity`; controllers only provide `ControlIntent`.
 - Standard gamepad and desktop mouse/keyboard controls exist.
 - First- and third-person cameras exist; first person has a cheap camera-parented carbine viewmodel with bob, recoil, and muzzle flash.
@@ -60,7 +61,7 @@ There is no wallhack/ESP presentation layer yet, no fake-latency/desync mechanic
 
 ### Mobile / browser
 
-Gamepad is the primary iPhone target for now. Touch controls are intentionally absent.
+Touch controls now share the same input-intent path as gamepad/desktop: dual movement/aim sticks plus FIRE, JUMP, RUN, and VIEW overlays appear on coarse-pointer devices after boot. They still need real-device tuning for sensitivity, ergonomics, handedness, and button placement.
 
 No PWA/offline cache is installed yet. Do that after the asset URL/layout stabilizes rather than caching rapidly changing prototype chunks.
 

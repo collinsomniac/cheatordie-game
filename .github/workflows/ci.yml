@@ -25,3 +25,9 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Typecheck and build
         run: npm run build
+      - name: Install smoke-test browser
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install chromium
+      - name: Browser boot smoke test
+        run: node scripts/smoke.mjs
