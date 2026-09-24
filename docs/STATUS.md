@@ -10,7 +10,7 @@ Live build: https://collinsomniac.github.io/cheatordie-game/
 - CI now boots the built app in headless Chromium after compilation, testing both forced WebGL2 + kinematic physics and forced WebGL2 + Havok. This catches runtime boot failures that TypeScript/Vite alone cannot detect.
 - CI uses a committed lockfile and `npm ci`, then TypeScript + Vite production build + bundle/path verification.
 - WebGPU is preferred, WebGL2 is a runtime fallback, and `?backend=webgpu` / `?backend=webgl` can force a backend for regression testing.
-- Havok WASM is the preferred physics path. If Havok initialization fails, the game automatically falls back to Babylon's native kinematic mesh collisions; `?physics=havok` and `?physics=kinematic` can force either path for diagnosis.
+- Havok WASM remains available on desktop/compatible browsers, with automatic fallback to Babylon native kinematic collisions on initialization failure. iOS currently defaults directly to kinematic collision for boot reliability because Havok's WASM/SIMD path has had Safari compatibility failures; `?physics=havok` explicitly opts into Havok for iOS testing and `?physics=kinematic` forces the safe path everywhere.
 - Player and bots are the same `RobotEntity`; controllers only provide `ControlIntent`.
 - Standard gamepad and desktop mouse/keyboard controls exist.
 - First- and third-person cameras exist; first person has a cheap camera-parented carbine viewmodel with bob, recoil, and muzzle flash.

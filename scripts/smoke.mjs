@@ -23,8 +23,12 @@ async function waitForServer() {
   throw new Error('Vite preview did not become reachable.');
 }
 
-async function bootCase(browser, label, query, expectedBackend) {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+async function bootCase(browser, label, query, expectedBackend, contextOptions = {}) {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 720 },
+    ...contextOptions,
+  });
+  const page = await context.newPage();
   const runtimeErrors = [];
   page.on('pageerror', (error) => runtimeErrors.push(error.stack || error.message));
   page.on('console', (message) => {
@@ -68,7 +72,7 @@ async function bootCase(browser, label, query, expectedBackend) {
   }
 
   console.log('Smoke passed:', label, backend, canvas);
-  await page.close();
+  await context.close();
 }
 
 let browser;
@@ -79,7 +83,19 @@ try {
     args: ['--use-gl=swiftshader', '--enable-webgl'],
   });
   await bootCase(browser, 'kinematic safety path', '?backend=webgl&physics=kinematic&seed=1', 'WEBGL2 · KINEMATIC');
-  await bootCase(browser, 'automatic physics path', '?backend=webgl&seed=1', ['WEBGL2 · HAVOK', 'WEBGL2 · KINEMATIC']);
+  await bootCase(
+    browser,
+    'iOS automatic path',
+    '?backend=webgl&seed=1',
+    'WEBGL2 · KINEMATIC',
+    {
+      userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1',
+      hasTouch: true,
+      isMobile: true,
+      screen: { width: 932, height: 430 },
+      viewport: { width: 932, height: 430 },
+    },
+  );
 } finally {
   await browser?.close();
   preview.kill('SIGTERM');

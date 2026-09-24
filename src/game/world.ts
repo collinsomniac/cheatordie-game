@@ -68,11 +68,17 @@ export async function createWorld(engine: SupportedEngine): Promise<WorldBundle>
   scene.constantlyUpdateMeshUnderPointer = false;
 
   const requested = new URLSearchParams(location.search).get('physics');
-  const forceKinematic = requested === 'kinematic';
+  const isiOS =
+    /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const mobileSafeDefault = requested === null && isiOS;
+  const forceKinematic = requested === 'kinematic' || mobileSafeDefault;
   const forceHavok = requested === 'havok';
 
   let physicsMode: PhysicsMode = 'kinematic';
-  let physicsFallbackReason: string | null = null;
+  let physicsFallbackReason: string | null = mobileSafeDefault
+    ? 'iOS safe default: native kinematic collisions; use ?physics=havok to test Havok explicitly.'
+    : null;
 
   if (!forceKinematic) {
     try {
