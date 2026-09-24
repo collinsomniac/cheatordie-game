@@ -1,0 +1,281 @@
+import {
+  AbstractMesh,
+  Color3,
+  Mesh,
+  MeshBuilder,
+  PhysicsCharacterController,
+  Quaternion,
+  Ray,
+  Scene,
+  StandardMaterial,
+  TransformNode,
+  Vector3,
+} from '@babylonjs/core';
+import type { CameraMode, ControlIntent, RobotController, RobotFaction, RobotStats, TargetSnapshot } from './types';
+import { MutationLoadout, type MutationId } from './mutations';
+import { GAME } from './config';
+
+const BASE_STATS: RobotStats = {
+  maxHealth: 100,
+  moveSpeed: 7.8,
+  sprintMultiplier: 1.42,
+  airControl: 0.34,
+  jumpSpeed: 8.0,
+  acceleration: 19,
+  fireInterval: 0.115,
+  damage: 22,
+  range: 55,
+  recoil: 0.016,
+  aimAssist: 0,
+  triggerAngle: 0,
+  momentumRetention: 0.72,
+};
+
+export interface ShotResult {
+  victim: RobotEntity | null;
+  hitPoint: Vector3;
+}
+
+export interface RobotCallbacks {
+  getTargets(robot: RobotEntity): TargetSnapshot[];
+  resolveShot(robot: RobotEntity, origin: Vector3, direction: Vector3, range: number): ShotResult;
+  onDamage(robot: RobotEntity, amount: number, attacker: RobotEntity): void;
+  onDeath(robot: RobotEntity, attacker: RobotEntity): void;
+  onShot(robot: RobotEntity, result: ShotResult): void;
+}
+
+export class RobotEntity {
+  readonly root: TransformNode;
+  readonly loadout = new MutationLoadout();
+  readonly controller: RobotController;
+  readonly id: string;
+  readonly faction: RobotFaction;
+  readonly meshParts: AbstractMesh[] = [];
+  readonly character: PhysicsCharacterController;
+  health = 100;
+  yaw = 0;
+  pitch = 0;
+  velocity = Vector3.Zero();
+  grounded = false;
+  cameraMode: CameraMode = 'first';
+  alive = true;
+  private fireCooldown = 0;
+  private cameraToggleLatch = false;
+  private readonly callbacks: RobotCallbacks;
+
+  constructor(
+    private readonly scene: Scene,
+    id: string,
+    faction: RobotFaction,
+    controller: RobotController,
+    spawn: Vector3,
+    color: Color3,
+    callbacks: RobotCallbacks,
+  ) {
+    this.id = id;
+    this.faction = faction;
+    this.controller = controller;
+    this.callbacks = callbacks;
+    this.root = new TransformNode(`${id}-root`, scene);
+    this.root.position.copyFrom(spawn);
+    this.root.rotationQuaternion = Quaternion.Identity();
+    this.createBody(color);
+    this.character = new PhysicsCharacterController(spawn, { capsuleHeight: 1.1, capsuleRadius: 0.38 }, scene);
+    this.health = this.stats.maxHealth;
+  }
+
+  get stats(): RobotStats {
+    return this.loadout.applyStats(BASE_STATS);
+  }
+
+  get eyePosition(): Vector3 {
+    return this.root.position.add(new Vector3(0, 1.5, 0));
+  }
+
+  get forward(): Vector3 {
+    const cp = Math.cos(this.pitch);
+    return new Vector3(Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp).normalize();
+  }
+
+  get snapshot(): TargetSnapshot {
+    return { id: this.id, position: this.eyePosition.clone(), velocity: this.velocity.clone(), alive: this.alive };
+  }
+
+  addMutation(id: MutationId): void {
+    this.loadout.add(id);
+  }
+
+  update(dt: number): void {
+    if (!this.alive) return;
+    const stats = this.stats;
+    const intent = this.controller.sample({
+      position: this.root.position,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      dt,
+      targets: this.callbacks.getTargets(this),
+    });
+
+    this.applyAimAssist(intent, stats);
+    this.yaw += intent.lookX;
+    this.pitch = Math.max(-1.25, Math.min(1.25, this.pitch + intent.lookY));
+
+    if (intent.toggleCamera && !this.cameraToggleLatch) this.cameraMode = this.cameraMode === 'first' ? 'third' : 'first';
+    this.cameraToggleLatch = intent.toggleCamera;
+
+    const moving = Math.hypot(intent.moveX, intent.moveY) > 0.05;
+    this.loadout.mutateIntent(intent, moving, this.grounded);
+    this.move(intent, stats, dt);
+    this.fireCooldown = Math.max(0, this.fireCooldown - dt);
+
+    const triggerbot = stats.triggerAngle > 0 && this.hasTargetInCone(stats.triggerAngle);
+    if ((intent.fire || triggerbot) && this.fireCooldown <= 0) this.fire(stats);
+  }
+
+  takeDamage(amount: number, attacker: RobotEntity): void {
+    if (!this.alive) return;
+    this.health = Math.max(0, this.health - amount);
+    this.callbacks.onDamage(this, amount, attacker);
+    if (this.health <= 0) {
+      this.alive = false;
+      for (const mesh of this.meshParts) mesh.setEnabled(false);
+      this.callbacks.onDeath(this, attacker);
+    }
+  }
+
+  respawn(position: Vector3): void {
+    this.alive = true;
+    this.health = this.stats.maxHealth;
+    this.velocity.setAll(0);
+    this.character.setVelocity(Vector3.Zero());
+    this.character.setPosition(position);
+    this.root.position.copyFrom(position);
+    for (const mesh of this.meshParts) mesh.setEnabled(true);
+    this.controller.reset?.();
+  }
+
+  dispose(): void {
+    this.character.dispose();
+    this.root.dispose(false, true);
+  }
+
+  private createBody(color: Color3): void {
+    const bodyMaterial = new StandardMaterial(`${this.id}-body-mat`, this.scene);
+    bodyMaterial.diffuseColor = color;
+    bodyMaterial.specularColor = Color3.Black();
+    const darkMaterial = new StandardMaterial(`${this.id}-dark-mat`, this.scene);
+    darkMaterial.diffuseColor = color.scale(0.34);
+    darkMaterial.specularColor = Color3.Black();
+    const glowMaterial = new StandardMaterial(`${this.id}-glow-mat`, this.scene);
+    glowMaterial.diffuseColor = Color3.Black();
+    glowMaterial.emissiveColor = color.scale(0.85);
+
+    const addBox = (name: string, size: Vector3, position: Vector3, material = bodyMaterial): Mesh => {
+      const mesh = MeshBuilder.CreateBox(`${this.id}-${name}`, { width: size.x, height: size.y, depth: size.z }, this.scene);
+      mesh.parent = this.root;
+      mesh.position.copyFrom(position);
+      mesh.material = material;
+      mesh.isPickable = true;
+      mesh.metadata = { robotId: this.id };
+      this.meshParts.push(mesh);
+      return mesh;
+    };
+
+    addBox('torso', new Vector3(0.82, 0.72, 0.42), new Vector3(0, 1.05, 0), darkMaterial);
+    addBox('head', new Vector3(0.56, 0.42, 0.52), new Vector3(0, 1.66, 0), bodyMaterial);
+    addBox('visor', new Vector3(0.43, 0.10, 0.04), new Vector3(0, 1.7, 0.28), glowMaterial).isPickable = false;
+    addBox('arm-l', new Vector3(0.21, 0.72, 0.21), new Vector3(-0.57, 1.03, 0), bodyMaterial);
+    addBox('arm-r', new Vector3(0.21, 0.72, 0.21), new Vector3(0.57, 1.03, 0), bodyMaterial);
+    addBox('leg-l', new Vector3(0.25, 0.72, 0.28), new Vector3(-0.23, 0.35, 0), bodyMaterial);
+    addBox('leg-r', new Vector3(0.25, 0.72, 0.28), new Vector3(0.23, 0.35, 0), bodyMaterial);
+    addBox('gun', new Vector3(0.16, 0.17, 0.74), new Vector3(0.51, 1.12, 0.47), darkMaterial);
+  }
+
+  private move(intent: ControlIntent, stats: RobotStats, dt: number): void {
+    const sin = Math.sin(this.yaw);
+    const cos = Math.cos(this.yaw);
+    const wish = new Vector3(
+      intent.moveX * cos + intent.moveY * sin,
+      0,
+      intent.moveY * cos - intent.moveX * sin,
+    );
+    if (wish.lengthSquared() > 1) wish.normalize();
+
+    const support = this.character.checkSupport(dt, new Vector3(0, -1, 0));
+    this.grounded = support.supportedState !== 0;
+    const speed = stats.moveSpeed * (intent.sprint ? stats.sprintMultiplier : 1);
+    const targetX = wish.x * speed;
+    const targetZ = wish.z * speed;
+    const control = this.grounded ? 1 : stats.airControl;
+    const blend = 1 - Math.exp(-stats.acceleration * control * dt);
+    this.velocity.x += (targetX - this.velocity.x) * blend;
+    this.velocity.z += (targetZ - this.velocity.z) * blend;
+
+    if (this.grounded) {
+      if (!intent.jump) {
+        const retention = wish.lengthSquared() > 0 ? stats.momentumRetention : 0.25;
+        this.velocity.x *= Math.pow(retention, dt * 4);
+        this.velocity.z *= Math.pow(retention, dt * 4);
+      }
+      this.velocity.y = intent.jump ? stats.jumpSpeed : Math.max(this.velocity.y, -1.5);
+    }
+
+    this.character.setVelocity(this.velocity);
+    this.character.integrate(dt, support, new Vector3(0, GAME.gravity, 0));
+    this.velocity.copyFrom(this.character.getVelocity());
+    this.root.position.copyFrom(this.character.getPosition());
+    this.root.rotationQuaternion = Quaternion.FromEulerAngles(0, this.yaw, 0);
+  }
+
+  private applyAimAssist(intent: ControlIntent, stats: RobotStats): void {
+    if (stats.aimAssist <= 0) return;
+    const target = this.closestAimTarget(0.22);
+    if (!target) return;
+    const delta = target.position.subtract(this.eyePosition);
+    const desiredYaw = Math.atan2(delta.x, delta.z);
+    const desiredPitch = -Math.atan2(delta.y, Math.hypot(delta.x, delta.z));
+    intent.lookX += this.wrapAngle(desiredYaw - this.yaw) * stats.aimAssist;
+    intent.lookY += (desiredPitch - this.pitch) * stats.aimAssist;
+  }
+
+  private hasTargetInCone(angle: number): boolean {
+    return this.closestAimTarget(angle) !== null;
+  }
+
+  private closestAimTarget(maxAngle: number): TargetSnapshot | null {
+    let best: TargetSnapshot | null = null;
+    let bestAngle = maxAngle;
+    const forward = this.forward;
+    const eye = this.eyePosition;
+    for (const target of this.callbacks.getTargets(this)) {
+      if (!target.alive) continue;
+      const direction = target.position.subtract(eye).normalize();
+      const angle = Math.acos(Math.max(-1, Math.min(1, Vector3.Dot(forward, direction))));
+      if (angle < bestAngle) {
+        bestAngle = angle;
+        best = target;
+      }
+    }
+    return best;
+  }
+
+  private fire(stats: RobotStats): void {
+    this.fireCooldown = stats.fireInterval;
+    const direction = this.forward;
+    const origin = this.eyePosition.add(direction.scale(0.45));
+    const result = this.callbacks.resolveShot(this, origin, direction, stats.range);
+    if (result.victim) result.victim.takeDamage(stats.damage, this);
+    this.pitch = Math.max(-1.25, this.pitch - stats.recoil);
+    this.callbacks.onShot(this, result);
+  }
+
+  private wrapAngle(angle: number): number {
+    while (angle > Math.PI) angle -= Math.PI * 2;
+    while (angle < -Math.PI) angle += Math.PI * 2;
+    return angle;
+  }
+
+  rayFromEyes(): Ray {
+    return new Ray(this.eyePosition, this.forward, this.stats.range);
+  }
+}
