@@ -1,0 +1,116 @@
+import {
+  Color3,
+  Color4,
+  DirectionalLight,
+  Engine,
+  HemisphericLight,
+  Mesh,
+  MeshBuilder,
+  PhysicsAggregate,
+  PhysicsShapeType,
+  Scene,
+  StandardMaterial,
+  Vector3,
+  WebGPUEngine,
+} from '@babylonjs/core';
+import HavokPhysics from '@babylonjs/havok';
+import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
+import { COLORS, GAME } from './config';
+
+export type SupportedEngine = Engine | WebGPUEngine;
+
+export interface EngineBundle {
+  engine: SupportedEngine;
+  backend: 'webgpu' | 'webgl2';
+}
+
+export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBundle> {
+  const forcedWebGL = new URLSearchParams(location.search).get('backend') === 'webgl';
+  if (!forcedWebGL && await WebGPUEngine.IsSupportedAsync) {
+    const engine = new WebGPUEngine(canvas, {
+      antialias: false,
+      adaptToDeviceRatio: false,
+      powerPreference: 'high-performance',
+    });
+    await engine.initAsync();
+    return { engine, backend: 'webgpu' };
+  }
+
+  const engine = new Engine(canvas, false, {
+    preserveDrawingBuffer: false,
+    stencil: false,
+    powerPreference: 'high-performance',
+  }, false);
+  return { engine, backend: 'webgl2' };
+}
+
+export async function createScene(engine: SupportedEngine): Promise<Scene> {
+  const scene = new Scene(engine);
+  scene.clearColor = Color4.FromHexString(`${COLORS.sky}ff`);
+  scene.skipPointerMovePicking = true;
+  scene.constantlyUpdateMeshUnderPointer = false;
+
+  const havok = await HavokPhysics();
+  const physics = new HavokPlugin(true, havok);
+  scene.enablePhysics(new Vector3(0, GAME.gravity, 0), physics);
+
+  const hemi = new HemisphericLight('ambient', new Vector3(0.2, 1, 0), scene);
+  hemi.intensity = 0.78;
+  hemi.diffuse = new Color3(0.58, 0.68, 0.64);
+  hemi.groundColor = new Color3(0.08, 0.12, 0.12);
+  const key = new DirectionalLight('key', new Vector3(-0.5, -1, 0.7), scene);
+  key.intensity = 0.45;
+  key.diffuse = new Color3(0.82, 0.92, 0.85);
+
+  buildArena(scene);
+  return scene;
+}
+
+function material(scene: Scene, name: string, hex: string, emissive = false): StandardMaterial {
+  const mat = new StandardMaterial(name, scene);
+  const color = Color3.FromHexString(hex);
+  mat.diffuseColor = emissive ? Color3.Black() : color;
+  mat.emissiveColor = emissive ? color : Color3.Black();
+  mat.specularColor = Color3.Black();
+  mat.freeze();
+  return mat;
+}
+
+function staticBox(scene: Scene, name: string, size: Vector3, position: Vector3, mat: StandardMaterial): Mesh {
+  const mesh = MeshBuilder.CreateBox(name, { width: size.x, height: size.y, depth: size.z }, scene);
+  mesh.position.copyFrom(position);
+  mesh.material = mat;
+  mesh.isPickable = true;
+  mesh.freezeWorldMatrix();
+  new PhysicsAggregate(mesh, PhysicsShapeType.BOX, { mass: 0, friction: 0.72, restitution: 0 }, scene);
+  return mesh;
+}
+
+function buildArena(scene: Scene): void {
+  const floorMat = material(scene, 'floor-mat', COLORS.floor);
+  const wallMat = material(scene, 'wall-mat', COLORS.wall);
+  const trimMat = material(scene, 'trim-mat', COLORS.trim);
+  const dangerMat = material(scene, 'danger-mat', '#ff3d55', true);
+  const half = GAME.arenaHalfSize;
+
+  staticBox(scene, 'floor', new Vector3(half * 2, 0.5, half * 2), new Vector3(0, -0.25, 0), floorMat);
+  staticBox(scene, 'north-wall', new Vector3(half * 2, 4, 0.6), new Vector3(0, 2, half), wallMat);
+  staticBox(scene, 'south-wall', new Vector3(half * 2, 4, 0.6), new Vector3(0, 2, -half), wallMat);
+  staticBox(scene, 'east-wall', new Vector3(0.6, 4, half * 2), new Vector3(half, 2, 0), wallMat);
+  staticBox(scene, 'west-wall', new Vector3(0.6, 4, half * 2), new Vector3(-half, 2, 0), wallMat);
+
+  const obstacles = [
+    [-8, 1.15, -3, 3, 2.3, 6], [8, 1.15, 3, 3, 2.3, 6],
+    [-3, 0.8, 7, 6, 1.6, 2.2], [3, 0.8, -7, 6, 1.6, 2.2],
+    [-12, 1.4, 12, 2.5, 2.8, 2.5], [12, 1.4, -12, 2.5, 2.8, 2.5],
+  ] as const;
+  obstacles.forEach(([x, y, z, sx, sy, sz], index) => staticBox(scene, `cover-${index}`, new Vector3(sx, sy, sz), new Vector3(x, y, z), index % 2 ? wallMat : trimMat));
+
+  for (let x = -18; x <= 18; x += 6) {
+    const strip = MeshBuilder.CreateBox(`strip-${x}`, { width: 2.4, height: 0.018, depth: 0.06 }, scene);
+    strip.position.set(x, 0.015, 0);
+    strip.material = dangerMat;
+    strip.isPickable = false;
+    strip.freezeWorldMatrix();
+  }
+}
