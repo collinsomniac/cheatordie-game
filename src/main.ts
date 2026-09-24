@@ -57,7 +57,7 @@ startButton.addEventListener('click', async () => {
         accumulator -= GAME.fixedStep;
       }
       adaptive.update(frameDt);
-      perf.textContent = `${backend.toUpperCase()} · ${adaptive.label}`;
+      perf.textContent = `${backend.toUpperCase()} · ${adaptive.label} · SEED ${game.seed}`;
       scene.render();
     });
 

@@ -11,6 +11,7 @@ Record:
 - controller model and connection method
 - WebGPU or forced WebGL2
 - displayed FPS and internal resolution percentage
+- run seed shown in the performance label
 - orientation
 - approximate session length before thermal slowdown, if any
 
@@ -68,5 +69,6 @@ one thing that felt bad:
 
 - `?backend=webgl` — force WebGL2 for backend comparison.
 - `?compat=1` — keep Babylon WebGPU compatibility mode enabled instead of the faster render-bundle path.
+- `?seed=12345` — reproduce the same upgrade order and bot random decisions. Keep the seed fixed when comparing movement/AI/rendering changes.
 
 Do not change both switches at once when isolating a regression.

@@ -14,6 +14,7 @@ import { RobotEntity, type RobotCallbacks, type ShotResult } from './robot';
 import { COLORS, GAME } from './config';
 import { drawMutationChoices, type MutationDefinition } from './mutations';
 import type { TargetSnapshot } from './types';
+import { RandomSource, runSeedFromLocation } from './rng';
 
 export interface HUDRefs {
   healthFill: HTMLElement;
@@ -30,6 +31,8 @@ export interface HUDRefs {
 
 export class Game {
   readonly input: InputManager;
+  readonly seed: number;
+  private readonly random: RandomSource;
   private readonly robots: RobotEntity[] = [];
   private readonly player: RobotEntity;
   private readonly firstCamera: FreeCamera;
@@ -60,6 +63,8 @@ export class Game {
     private readonly hud: HUDRefs,
   ) {
     this.input = new InputManager(canvas);
+    this.random = new RandomSource(runSeedFromLocation());
+    this.seed = this.random.seed;
     const callbacks = this.callbacks();
     this.player = new RobotEntity(scene, 'player', 'player', new PlayerController(this.input), new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z), Color3.FromHexString(COLORS.player), callbacks);
     this.robots.push(this.player);
@@ -210,7 +215,7 @@ export class Game {
           strafe: 0.45 + difficulty * 0.35,
           lookResponse: 2.2 + difficulty * 3.5,
           fireCone: 0.085 - difficulty * 0.03,
-        }),
+        }, this.random.next),
         position,
         Color3.FromHexString(i % 2 ? COLORS.enemy : COLORS.enemyAccent),
         this.callbacks(),
@@ -229,7 +234,7 @@ export class Game {
     if (!this.player.alive) return;
     if (this.robots.some((robot) => robot.faction === 'enemy' && robot.alive)) return;
     this.upgradeOpen = true;
-    const choices = drawMutationChoices(99)
+    const choices = drawMutationChoices(99, this.random.next)
       .filter((choice) => this.player.loadout.availableSlot(choice.id) !== null)
       .slice(0, 3);
 

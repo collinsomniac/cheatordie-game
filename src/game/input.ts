@@ -161,7 +161,7 @@ interface RememberedPoint {
 
 export class BotController implements RobotController {
   readonly kind = 'bot' as const;
-  private orbitSign = Math.random() < 0.5 ? -1 : 1;
+  private orbitSign: number;
   private retargetClock = 0;
   private lastSeen: RememberedPoint | null = null;
   private lastX: number | null = null;
@@ -169,7 +169,12 @@ export class BotController implements RobotController {
   private stuckClock = 0;
   private evadeClock = 0;
 
-  constructor(private readonly tuning: BotTuning) {}
+  constructor(
+    private readonly tuning: BotTuning,
+    private readonly random: () => number = Math.random,
+  ) {
+    this.orbitSign = this.random() < 0.5 ? -1 : 1;
+  }
 
   sample(context: ControllerContext): ControlIntent {
     const target = context.targets.find((candidate) => candidate.alive);
@@ -207,8 +212,8 @@ export class BotController implements RobotController {
 
     this.retargetClock -= context.dt;
     if (this.retargetClock <= 0) {
-      this.retargetClock = 0.7 + Math.random() * 1.4;
-      if (Math.random() < 0.35) this.orbitSign *= -1;
+      this.retargetClock = 0.7 + this.random() * 1.4;
+      if (this.random() < 0.35) this.orbitSign *= -1;
     }
 
     let forward = flatDistance > this.tuning.preferredDistance + 1.5

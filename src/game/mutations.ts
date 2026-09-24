@@ -146,10 +146,10 @@ export class MutationLoadout {
   }
 }
 
-export function drawMutationChoices(count: number): MutationDefinition[] {
+export function drawMutationChoices(count: number, random: () => number = Math.random): MutationDefinition[] {
   const copy = [...Object.values(MUTATIONS)];
   for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [copy[i], copy[j]] = [copy[j]!, copy[i]!];
   }
   return copy.slice(0, count);
