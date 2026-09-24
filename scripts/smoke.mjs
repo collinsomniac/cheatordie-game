@@ -71,6 +71,13 @@ async function bootCase(browser, label, query, expectedBackend, contextOptions =
     throw new Error(label + ': runtime errors:\n' + runtimeErrors.join('\n'));
   }
 
+  if (contextOptions.hasTouch) {
+    const touchDisplay = await page.locator('#touch-controls').evaluate((node) => getComputedStyle(node).display);
+    if (touchDisplay === 'none') {
+      throw new Error(label + ': touch-capable boot succeeded but touch controls are hidden.');
+    }
+  }
+
   console.log('Smoke passed:', label, backend, canvas);
   await context.close();
 }
