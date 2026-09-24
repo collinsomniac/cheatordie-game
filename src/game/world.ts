@@ -22,18 +22,29 @@ export interface EngineBundle {
 }
 
 export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBundle> {
-  const forcedWebGL = new URLSearchParams(location.search).get('backend') === 'webgl';
+  const params = new URLSearchParams(location.search);
+  const requestedBackend = params.get('backend');
+  const forcedWebGL = requestedBackend === 'webgl';
+  const forcedWebGPU = requestedBackend === 'webgpu';
+
   if (!forcedWebGL && await WebGPUEngine.IsSupportedAsync) {
-    const engine = new WebGPUEngine(canvas, {
-      antialias: false,
-      adaptToDeviceRatio: false,
-      powerPreference: 'high-performance',
-    });
-    await engine.initAsync();
-    // Babylon's non-compatibility WebGPU path records/reuses render bundles and
-    // reduces CPU command overhead. ?compat=1 is the regression escape hatch.
-    engine.compatibilityMode = new URLSearchParams(location.search).get('compat') === '1';
-    return { engine, backend: 'webgpu' };
+    try {
+      const engine = new WebGPUEngine(canvas, {
+        antialias: false,
+        adaptToDeviceRatio: false,
+        powerPreference: 'high-performance',
+      });
+      await engine.initAsync();
+      // Babylon's non-compatibility WebGPU path records/reuses render bundles and
+      // reduces CPU command overhead. ?compat=1 is the regression escape hatch.
+      engine.compatibilityMode = params.get('compat') === '1';
+      return { engine, backend: 'webgpu' };
+    } catch (error) {
+      if (forcedWebGPU) throw error;
+      console.warn('WebGPU initialization failed; falling back to WebGL2.', error);
+    }
+  } else if (forcedWebGPU) {
+    throw new Error('WebGPU was explicitly requested but is not supported by this browser/device.');
   }
 
   const engine = new Engine(canvas, false, {

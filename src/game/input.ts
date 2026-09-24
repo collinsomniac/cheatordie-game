@@ -2,6 +2,15 @@ import type { ControlIntent, RobotController, ControllerContext } from './types'
 
 const DEADZONE = 0.15;
 
+export function primaryGamepad(): Gamepad | null {
+  const pads = navigator.getGamepads();
+  for (let index = 0; index < pads.length; index += 1) {
+    const pad = pads[index];
+    if (pad) return pad;
+  }
+  return null;
+}
+
 function deadzone(value: number): number {
   const abs = Math.abs(value);
   if (abs < DEADZONE) return 0;
@@ -43,7 +52,7 @@ export class InputManager {
   }
 
   sample(): ControlIntent {
-    const pad = [...navigator.getGamepads()].find(Boolean) ?? null;
+    const pad = primaryGamepad();
     let moveX = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     let moveY = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     let lookX = this.pointerDX * 0.0022;

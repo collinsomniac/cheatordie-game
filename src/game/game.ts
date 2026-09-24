@@ -9,7 +9,7 @@ import { Ray } from '@babylonjs/core/Culling/ray';
 import { Scene } from '@babylonjs/core/scene';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { BotController, InputManager, PlayerController } from './input';
+import { BotController, InputManager, PlayerController, primaryGamepad } from './input';
 import { RobotEntity, type RobotCallbacks, type ShotResult } from './robot';
 import { COLORS, GAME } from './config';
 import { drawMutationChoices, type MutationDefinition } from './mutations';
@@ -50,6 +50,9 @@ export class Game {
   private weaponKick = 0;
   private muzzleClock = 0;
   private weaponBobPhase = 0;
+  private lastHealthDisplay = -1;
+  private lastMutationRevision = -1;
+  private lastAliveDisplay = true;
 
   constructor(
     private readonly scene: Scene,
@@ -275,7 +278,7 @@ export class Game {
   };
 
   private handleUpgradeGamepad(): void {
-    const pad = [...navigator.getGamepads()].find(Boolean) ?? null;
+    const pad = primaryGamepad();
     if (!pad) return;
     const left = Boolean(pad.buttons[14]?.pressed) || (pad.axes[0] ?? 0) < -0.65;
     const right = Boolean(pad.buttons[15]?.pressed) || (pad.axes[0] ?? 0) > 0.65;
@@ -416,15 +419,28 @@ export class Game {
   }
 
   private updateHUD(): void {
-    const healthPct = Math.max(0, this.player.health / this.player.stats.maxHealth);
-    this.hud.healthFill.style.transform = `scaleX(${healthPct})`;
-    this.hud.healthLabel.textContent = Math.ceil(this.player.health).toString();
-    this.hud.ammoLabel.textContent = this.player.alive ? '∞' : 'OFFLINE';
-    this.hud.mutationStrip.replaceChildren(...this.player.loadout.entries().map(({ definition, stacks }) => {
-      const chip = document.createElement('span');
-      chip.textContent = `${definition.code}${stacks > 1 ? `×${stacks}` : ''}`;
-      return chip;
-    }));
+    const healthDisplay = Math.ceil(this.player.health);
+    if (healthDisplay !== this.lastHealthDisplay) {
+      this.lastHealthDisplay = healthDisplay;
+      const healthPct = Math.max(0, this.player.health / this.player.stats.maxHealth);
+      this.hud.healthFill.style.transform = `scaleX(${healthPct})`;
+      this.hud.healthLabel.textContent = healthDisplay.toString();
+    }
+
+    if (this.player.alive !== this.lastAliveDisplay) {
+      this.lastAliveDisplay = this.player.alive;
+      this.hud.ammoLabel.textContent = this.player.alive ? '∞' : 'OFFLINE';
+    }
+
+    if (this.player.loadout.revision !== this.lastMutationRevision) {
+      this.lastMutationRevision = this.player.loadout.revision;
+      this.hud.mutationStrip.replaceChildren(...this.player.loadout.entries().map(({ definition, stacks, slots }) => {
+        const chip = document.createElement('span');
+        const slotLabel = slots.map((slot) => slot.replace('-left', 'L').replace('-right', 'R')).join('/');
+        chip.textContent = `${definition.code}${stacks > 1 ? `×${stacks}` : ''} [${slotLabel}]`;
+        return chip;
+      }));
+    }
   }
 
   private createTracerPool(): void {

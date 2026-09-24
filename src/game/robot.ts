@@ -99,6 +99,7 @@ export class RobotEntity {
   private cameraToggleLatch = false;
   private readonly callbacks: RobotCallbacks;
   private palette!: RobotPalette;
+  private cachedStats: RobotStats = { ...BASE_STATS };
 
   constructor(
     private readonly scene: Scene,
@@ -122,7 +123,7 @@ export class RobotEntity {
   }
 
   get stats(): RobotStats {
-    return this.loadout.applyStats(BASE_STATS);
+    return this.cachedStats;
   }
 
   get eyePosition(): Vector3 {
@@ -147,6 +148,7 @@ export class RobotEntity {
   addMutation(id: MutationId): BodySlot | null {
     const slot = this.loadout.add(id);
     if (!slot) return null;
+    this.cachedStats = this.loadout.applyStats(BASE_STATS);
     const stack = this.loadout.count(id);
     if (stack <= 3) this.attachMutationVisual(id, stack);
     return slot;

@@ -82,6 +82,11 @@ export const MUTATIONS: Record<MutationId, MutationDefinition> = {
 
 export class MutationLoadout {
   private readonly installed: InstalledMutation[] = [];
+  private _revision = 0;
+
+  get revision(): number {
+    return this._revision;
+  }
 
   add(id: MutationId): BodySlot | null {
     const definition = MUTATIONS[id];
@@ -89,6 +94,7 @@ export class MutationLoadout {
     const slot = this.availableSlot(id);
     if (!slot) return null;
     this.installed.push({ id, slot });
+    this._revision += 1;
     return slot;
   }
 
