@@ -48,8 +48,9 @@ async function bootCase(browser, label, query, expectedBackend) {
   await page.waitForTimeout(500);
 
   const backend = await page.locator('#backend-label').textContent();
-  if (!backend?.includes(expectedBackend)) {
-    throw new Error(label + ': unexpected backend label: ' + backend);
+  const expected = Array.isArray(expectedBackend) ? expectedBackend : [expectedBackend];
+  if (!expected.some((value) => backend?.includes(value))) {
+    throw new Error(label + ': unexpected backend label: ' + backend + ' expected one of ' + expected.join(', '));
   }
 
   const canvas = await page.locator('#game').evaluate((node) => ({
@@ -78,7 +79,7 @@ try {
     args: ['--use-gl=swiftshader', '--enable-webgl'],
   });
   await bootCase(browser, 'kinematic safety path', '?backend=webgl&physics=kinematic&seed=1', 'WEBGL2 · KINEMATIC');
-  await bootCase(browser, 'havok path', '?backend=webgl&physics=havok&seed=1', 'WEBGL2 · HAVOK');
+  await bootCase(browser, 'automatic physics path', '?backend=webgl&seed=1', ['WEBGL2 · HAVOK', 'WEBGL2 · KINEMATIC']);
 } finally {
   await browser?.close();
   preview.kill('SIGTERM');

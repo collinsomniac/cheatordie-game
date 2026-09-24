@@ -76,7 +76,7 @@ export async function createWorld(engine: SupportedEngine): Promise<WorldBundle>
 
   if (!forceKinematic) {
     try {
-      const havok = await HavokPhysics();
+      const havok = await withTimeout(HavokPhysics(), 5000, 'Havok/WASM initialization timed out');
       const physics = new HavokPlugin(true, havok);
       scene.enablePhysics(new Vector3(0, GAME.gravity, 0), physics);
       physicsMode = 'havok';
@@ -166,5 +166,19 @@ function buildArena(scene: Scene, physicsMode: PhysicsMode): void {
     strip.material = dangerMat;
     strip.isPickable = false;
     strip.freezeWorldMatrix();
+  }
+}
+
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: number | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    if (timeoutId !== undefined) window.clearTimeout(timeoutId);
   }
 }
