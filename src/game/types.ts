@@ -1,4 +1,4 @@
-import type { Vector3 } from '@babylonjs/core';
+import type { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 export type RobotFaction = 'player' | 'enemy';
 export type CameraMode = 'first' | 'third';

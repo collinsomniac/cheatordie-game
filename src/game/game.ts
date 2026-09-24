@@ -1,14 +1,12 @@
-import {
-  AbstractMesh,
-  ArcRotateCamera,
-  Color3,
-  FreeCamera,
-  LinesMesh,
-  MeshBuilder,
-  Ray,
-  Scene,
-  Vector3,
-} from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
+import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
+import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { LinesMesh } from '@babylonjs/core/Meshes/linesMesh';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { Ray } from '@babylonjs/core/Culling/ray';
+import { Scene } from '@babylonjs/core/scene';
 import { BotController, InputManager, PlayerController } from './input';
 import { RobotEntity, type RobotCallbacks, type ShotResult } from './robot';
 import { COLORS, GAME } from './config';

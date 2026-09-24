@@ -1,16 +1,13 @@
-import {
-  AbstractMesh,
-  Color3,
-  Mesh,
-  MeshBuilder,
-  PhysicsCharacterController,
-  Quaternion,
-  Ray,
-  Scene,
-  StandardMaterial,
-  TransformNode,
-  Vector3,
-} from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { PhysicsCharacterController } from '@babylonjs/core/Physics/v2/characterController';
+import { Ray } from '@babylonjs/core/Culling/ray';
+import { Scene } from '@babylonjs/core/scene';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { CameraMode, ControlIntent, RobotController, RobotFaction, RobotStats, TargetSnapshot } from './types';
 import { MutationLoadout, type MutationId } from './mutations';
 import { GAME } from './config';

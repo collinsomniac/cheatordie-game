@@ -1,18 +1,15 @@
-import {
-  Color3,
-  Color4,
-  DirectionalLight,
-  Engine,
-  HemisphericLight,
-  Mesh,
-  MeshBuilder,
-  PhysicsAggregate,
-  PhysicsShapeType,
-  Scene,
-  StandardMaterial,
-  Vector3,
-  WebGPUEngine,
-} from '@babylonjs/core';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Engine } from '@babylonjs/core/Engines/engine';
+import { WebGPUEngine } from '@babylonjs/core/Engines/webgpuEngine';
+import { Scene } from '@babylonjs/core/scene';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { PhysicsAggregate } from '@babylonjs/core/Physics/v2/physicsAggregate';
+import { PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin';
 import HavokPhysics from '@babylonjs/havok';
 import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
 import { COLORS, GAME } from './config';
