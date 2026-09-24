@@ -13,12 +13,17 @@ export interface MutationDefinition {
   mutateIntent?(intent: ControlIntent, moving: boolean, grounded: boolean, stacks: number): void;
 }
 
+export interface InstalledMutation {
+  id: MutationId;
+  slot: BodySlot;
+}
+
 export const MUTATIONS: Record<MutationId, MutationDefinition> = {
   'aim-assist': {
     id: 'aim-assist',
     name: 'Magnetic Optics',
     code: 'AIM_ASSIST',
-    description: 'Crosshair magnetism bends your look vector toward nearby targets.',
+    description: 'Crosshair magnetism bends your look vector toward nearby visible targets.',
     slots: ['head', 'sensor-left', 'sensor-right'],
     stackable: true,
     applyStats: (stats, stacks) => { stats.aimAssist += 0.09 * stacks; },
@@ -27,7 +32,7 @@ export const MUTATIONS: Record<MutationId, MutationDefinition> = {
     id: 'triggerbot',
     name: 'Deadman Trigger',
     code: 'TRIGGERBOT',
-    description: 'The weapon fires itself when a hostile enters a narrow aim cone.',
+    description: 'The weapon fires itself when a visible hostile enters a narrow aim cone.',
     slots: ['arm-left', 'arm-right'],
     stackable: true,
     applyStats: (stats, stacks) => { stats.triggerAngle += 0.012 * stacks; },
@@ -76,38 +81,67 @@ export const MUTATIONS: Record<MutationId, MutationDefinition> = {
 };
 
 export class MutationLoadout {
-  private readonly stacks = new Map<MutationId, number>();
+  private readonly installed: InstalledMutation[] = [];
 
-  add(id: MutationId): void {
-    this.stacks.set(id, (this.stacks.get(id) ?? 0) + 1);
+  add(id: MutationId): BodySlot | null {
+    const definition = MUTATIONS[id];
+    if (!definition.stackable && this.has(id)) return null;
+    const slot = this.availableSlot(id);
+    if (!slot) return null;
+    this.installed.push({ id, slot });
+    return slot;
+  }
+
+  availableSlot(id: MutationId): BodySlot | null {
+    const occupied = new Set(this.installed.map((item) => item.slot));
+    for (const slot of MUTATIONS[id].slots) {
+      if (!occupied.has(slot)) return slot;
+    }
+    return null;
   }
 
   has(id: MutationId): boolean {
-    return (this.stacks.get(id) ?? 0) > 0;
+    return this.installed.some((item) => item.id === id);
   }
 
   count(id: MutationId): number {
-    return this.stacks.get(id) ?? 0;
+    let count = 0;
+    for (const item of this.installed) if (item.id === id) count += 1;
+    return count;
   }
 
-  entries(): Array<{ definition: MutationDefinition; stacks: number }> {
-    return [...this.stacks.entries()].map(([id, stacks]) => ({ definition: MUTATIONS[id], stacks }));
+  slotsFor(id: MutationId): BodySlot[] {
+    return this.installed.filter((item) => item.id === id).map((item) => item.slot);
+  }
+
+  entries(): Array<{ definition: MutationDefinition; stacks: number; slots: BodySlot[] }> {
+    const ids = new Set(this.installed.map((item) => item.id));
+    return [...ids].map((id) => ({
+      definition: MUTATIONS[id],
+      stacks: this.count(id),
+      slots: this.slotsFor(id),
+    }));
+  }
+
+  occupiedSlots(): readonly InstalledMutation[] {
+    return this.installed;
   }
 
   applyStats(base: RobotStats): RobotStats {
     const result = { ...base };
-    for (const [id, stacks] of this.stacks) MUTATIONS[id].applyStats(result, stacks);
+    for (const { definition, stacks } of this.entries()) definition.applyStats(result, stacks);
     return result;
   }
 
   mutateIntent(intent: ControlIntent, moving: boolean, grounded: boolean): void {
-    for (const [id, stacks] of this.stacks) MUTATIONS[id].mutateIntent?.(intent, moving, grounded, stacks);
+    for (const { definition, stacks } of this.entries()) {
+      definition.mutateIntent?.(intent, moving, grounded, stacks);
+    }
   }
 }
 
 export function drawMutationChoices(count: number): MutationDefinition[] {
-  const all = Object.values(MUTATIONS);
-  const copy = [...all];
+  const copy = [...Object.values(MUTATIONS)];
   for (let i = copy.length - 1; i > 0; i -= 1) {
     const j = Math.floor(Math.random() * (i + 1));
     [copy[i], copy[j]] = [copy[j]!, copy[i]!];

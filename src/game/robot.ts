@@ -8,7 +8,7 @@ import { Ray } from '@babylonjs/core/Culling/ray';
 import { Scene } from '@babylonjs/core/scene';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import type { CameraMode, ControlIntent, RobotController, RobotFaction, RobotStats, TargetSnapshot } from './types';
+import type { BodySlot, CameraMode, ControlIntent, RobotController, RobotFaction, RobotStats, TargetSnapshot } from './types';
 import { MutationLoadout, type MutationId } from './mutations';
 import { GAME } from './config';
 
@@ -144,10 +144,12 @@ export class RobotEntity {
     };
   }
 
-  addMutation(id: MutationId): void {
-    this.loadout.add(id);
+  addMutation(id: MutationId): BodySlot | null {
+    const slot = this.loadout.add(id);
+    if (!slot) return null;
     const stack = this.loadout.count(id);
     if (stack <= 3) this.attachMutationVisual(id, stack);
+    return slot;
   }
 
   update(dt: number): void {

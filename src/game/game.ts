@@ -209,14 +209,24 @@ export class Game {
     if (!this.player.alive) return;
     if (this.robots.some((robot) => robot.faction === 'enemy' && robot.alive)) return;
     this.upgradeOpen = true;
-    const choices = drawMutationChoices(3);
+    const choices = drawMutationChoices(99)
+      .filter((choice) => this.player.loadout.availableSlot(choice.id) !== null)
+      .slice(0, 3);
+
+    if (choices.length === 0) {
+      this.toast('CHASSIS SATURATED // NO COMPATIBLE SOCKETS');
+      this.waveOfferTimer = window.setTimeout(() => this.spawnWave(), 900);
+      return;
+    }
+
     this.upgradeChoices = choices;
     this.upgradeIndex = 0;
     this.hud.upgradeCards.replaceChildren();
     choices.forEach((choice, index) => {
       const button = document.createElement('button');
       button.className = 'upgrade-card';
-      button.innerHTML = `<span>0${index + 1} // ${choice.code}</span><strong>${choice.name}</strong><p>${choice.description}</p><small>${choice.slots.join(' · ')}</small>`;
+      const mount = this.player.loadout.availableSlot(choice.id);
+      button.innerHTML = `<span>0${index + 1} // ${choice.code}</span><strong>${choice.name}</strong><p>${choice.description}</p><small>MOUNT: ${mount ?? 'none'} · COMPAT: ${choice.slots.join(' · ')}</small>`;
       button.addEventListener('click', () => this.chooseUpgrade(choice));
       this.hud.upgradeCards.append(button);
     });
@@ -226,8 +236,12 @@ export class Game {
 
   private chooseUpgrade(choice: MutationDefinition): void {
     if (!this.upgradeOpen) return;
-    this.player.addMutation(choice.id);
-    this.toast(`${choice.code} INSTALLED`);
+    const slot = this.player.addMutation(choice.id);
+    if (!slot) {
+      this.toast(`${choice.code} REJECTED // NO FREE SOCKET`);
+      return;
+    }
+    this.toast(`${choice.code} -> ${slot.toUpperCase()}`);
     this.spawnWave();
   }
 

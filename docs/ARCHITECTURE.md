@@ -39,3 +39,8 @@ Gameplay steps at 60 Hz using an accumulator; rendering is independent. Expensiv
 ## Performance budget principles
 
 Prefer fewer pixels before fewer triangles. Avoid full-device-DPR rendering on phones. Keep dynamic light/shadow counts low, reduce transparency/overdraw, pool short-lived effects, instance repeated meshes, compress GPU textures, bake static work, and measure on-device before adding visual cost.
+
+
+## Body-slot occupancy
+
+The ten baseline body sockets are now enforced by `MutationLoadout`. Each installed mutation instance occupies exactly one compatible physical socket, so arm cheats compete with other arm cheats, leg cheats compete with movement hardware, and core/utility hardware competes for limited space. Upgrade offers are filtered to mutations that can actually mount. Replacement/swapping UI is intentionally deferred; once all compatible sockets are saturated, the run continues without another install until replacement mechanics exist.
