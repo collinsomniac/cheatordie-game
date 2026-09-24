@@ -29,12 +29,20 @@
         <h1>CHEAT<br/><em>OR</em> DIE</h1>
         <p>A browser-native FPS where cheating is the build system. Survive waves, steal illegal firmware, mutate the same robot architecture your enemies use.</p>
         <button id="start-button" type="button">BOOT CHASSIS</button>
-        <div class="controls"><b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/><b>DESKTOP</b> WASD · mouse · click · Space · Shift · V</div>
+        <div class="controls"><b>TOUCH</b> dual sticks · FIRE · JUMP · RUN · VIEW<br/><b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/><b>DESKTOP</b> WASD · mouse · click · Space · Shift · V</div>
       </div>
       <div id="upgrade-panel" class="panel panel--upgrade hidden" aria-live="polite">
         <div class="panel__eyebrow">ILLEGAL FIRMWARE DETECTED</div>
         <h2>CHOOSE A CHEAT</h2>
         <div id="upgrade-cards" class="upgrade-grid"></div>
+      </div>
+      <div id="touch-controls" class="touch-controls" aria-label="Touch controls">
+        <div class="touch-stick touch-stick--move" data-touch-stick="move" aria-label="Movement joystick"><i class="touch-stick__knob"></i><span>MOVE</span></div>
+        <div class="touch-stick touch-stick--look" data-touch-stick="look" aria-label="Aim joystick"><i class="touch-stick__knob"></i><span>AIM</span></div>
+        <button class="touch-button touch-button--fire" data-touch-button="fire" type="button">FIRE</button>
+        <button class="touch-button touch-button--jump" data-touch-button="jump" type="button">JUMP</button>
+        <button class="touch-button touch-button--sprint" data-touch-button="sprint" type="button">RUN</button>
+        <button class="touch-button touch-button--camera" data-touch-button="camera" type="button">VIEW</button>
       </div>
       <div id="toast" class="toast hidden"></div>
       <div id="perf" class="perf"></div>

@@ -11,6 +11,196 @@ export function primaryGamepad(): Gamepad | null {
   return null;
 }
 
+
+interface TouchSample {
+  moveX: number;
+  moveY: number;
+  lookX: number;
+  lookY: number;
+  fire: boolean;
+  jump: boolean;
+  sprint: boolean;
+  toggleCamera: boolean;
+}
+
+class TouchControls {
+  private moveX = 0;
+  private moveY = 0;
+  private lookX = 0;
+  private lookY = 0;
+  private fire = false;
+  private sprint = false;
+  private jumpQueued = false;
+  private cameraQueued = false;
+  private movePointer: number | null = null;
+  private lookPointer: number | null = null;
+
+  private readonly moveStick: HTMLElement | null;
+  private readonly lookStick: HTMLElement | null;
+  private readonly moveKnob: HTMLElement | null;
+  private readonly lookKnob: HTMLElement | null;
+  private readonly fireButton: HTMLElement | null;
+  private readonly jumpButton: HTMLElement | null;
+  private readonly sprintButton: HTMLElement | null;
+  private readonly cameraButton: HTMLElement | null;
+
+  constructor(private readonly root: HTMLElement | null) {
+    this.moveStick = root?.querySelector<HTMLElement>('[data-touch-stick="move"]') ?? null;
+    this.lookStick = root?.querySelector<HTMLElement>('[data-touch-stick="look"]') ?? null;
+    this.moveKnob = this.moveStick?.querySelector<HTMLElement>('.touch-stick__knob') ?? null;
+    this.lookKnob = this.lookStick?.querySelector<HTMLElement>('.touch-stick__knob') ?? null;
+    this.fireButton = root?.querySelector<HTMLElement>('[data-touch-button="fire"]') ?? null;
+    this.jumpButton = root?.querySelector<HTMLElement>('[data-touch-button="jump"]') ?? null;
+    this.sprintButton = root?.querySelector<HTMLElement>('[data-touch-button="sprint"]') ?? null;
+    this.cameraButton = root?.querySelector<HTMLElement>('[data-touch-button="camera"]') ?? null;
+
+    this.bindStick(this.moveStick, 'move');
+    this.bindStick(this.lookStick, 'look');
+    this.bindHold(this.fireButton, (value) => { this.fire = value; });
+    this.bindHold(this.sprintButton, (value) => { this.sprint = value; });
+    this.bindTap(this.jumpButton, () => { this.jumpQueued = true; });
+    this.bindTap(this.cameraButton, () => { this.cameraQueued = true; });
+  }
+
+  sample(): TouchSample {
+    const sample = {
+      moveX: this.moveX,
+      moveY: this.moveY,
+      lookX: this.lookX * 0.052,
+      lookY: this.lookY * 0.042,
+      fire: this.fire,
+      jump: this.jumpQueued,
+      sprint: this.sprint,
+      toggleCamera: this.cameraQueued,
+    };
+    this.jumpQueued = false;
+    this.cameraQueued = false;
+    return sample;
+  }
+
+  clear(): void {
+    this.moveX = 0;
+    this.moveY = 0;
+    this.lookX = 0;
+    this.lookY = 0;
+    this.fire = false;
+    this.sprint = false;
+    this.jumpQueued = false;
+    this.cameraQueued = false;
+    this.movePointer = null;
+    this.lookPointer = null;
+    this.resetKnob(this.moveKnob);
+    this.resetKnob(this.lookKnob);
+  }
+
+  dispose(): void {
+    // Elements are page-lifetime UI. Pointer handlers intentionally die with the page.
+    this.clear();
+  }
+
+  private bindStick(element: HTMLElement | null, kind: 'move' | 'look'): void {
+    if (!element) return;
+
+    const update = (event: PointerEvent): void => {
+      const active = kind === 'move' ? this.movePointer : this.lookPointer;
+      if (active !== event.pointerId) return;
+      event.preventDefault();
+
+      const rect = element.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.36);
+      let x = (event.clientX - cx) / radius;
+      let y = (event.clientY - cy) / radius;
+      const length = Math.hypot(x, y);
+      if (length > 1) {
+        x /= length;
+        y /= length;
+      }
+
+      const knob = kind === 'move' ? this.moveKnob : this.lookKnob;
+      if (knob) knob.style.transform = `translate(${x * radius * 0.52}px, ${y * radius * 0.52}px)`;
+
+      if (kind === 'move') {
+        this.moveX = x;
+        this.moveY = -y;
+      } else {
+        this.lookX = x;
+        this.lookY = y;
+      }
+    };
+
+    element.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      if (kind === 'move') {
+        if (this.movePointer !== null) return;
+        this.movePointer = event.pointerId;
+      } else {
+        if (this.lookPointer !== null) return;
+        this.lookPointer = event.pointerId;
+      }
+      element.setPointerCapture?.(event.pointerId);
+      update(event);
+    });
+
+    element.addEventListener('pointermove', update);
+
+    const release = (event: PointerEvent): void => {
+      const active = kind === 'move' ? this.movePointer : this.lookPointer;
+      if (active !== event.pointerId) return;
+      if (kind === 'move') {
+        this.movePointer = null;
+        this.moveX = 0;
+        this.moveY = 0;
+        this.resetKnob(this.moveKnob);
+      } else {
+        this.lookPointer = null;
+        this.lookX = 0;
+        this.lookY = 0;
+        this.resetKnob(this.lookKnob);
+      }
+    };
+
+    element.addEventListener('pointerup', release);
+    element.addEventListener('pointercancel', release);
+    element.addEventListener('lostpointercapture', release);
+  }
+
+  private bindHold(element: HTMLElement | null, setValue: (value: boolean) => void): void {
+    if (!element) return;
+    element.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      element.setPointerCapture?.(event.pointerId);
+      setValue(true);
+      element.classList.add('is-active');
+    });
+    const release = (event: PointerEvent): void => {
+      event.preventDefault();
+      setValue(false);
+      element.classList.remove('is-active');
+    };
+    element.addEventListener('pointerup', release);
+    element.addEventListener('pointercancel', release);
+    element.addEventListener('lostpointercapture', release);
+  }
+
+  private bindTap(element: HTMLElement | null, action: () => void): void {
+    if (!element) return;
+    element.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      action();
+      element.classList.add('is-active');
+    });
+    const release = (): void => element.classList.remove('is-active');
+    element.addEventListener('pointerup', release);
+    element.addEventListener('pointercancel', release);
+  }
+
+  private resetKnob(knob: HTMLElement | null): void {
+    if (knob) knob.style.transform = 'translate(0px, 0px)';
+  }
+}
+
 function deadzone(value: number): number {
   const abs = Math.abs(value);
   if (abs < DEADZONE) return 0;
@@ -25,8 +215,10 @@ export class InputManager {
   private jumpQueued = false;
   private cameraQueued = false;
   private gamepadCameraLatch = false;
+  private readonly touch: TouchControls;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
+    this.touch = new TouchControls(document.querySelector<HTMLElement>('#touch-controls'));
     window.addEventListener('keydown', this.onKeyDown, { passive: false });
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.clear);
@@ -43,6 +235,7 @@ export class InputManager {
     this.canvas.removeEventListener('mousedown', this.onMouseDown);
     window.removeEventListener('mouseup', this.onMouseUp);
     window.removeEventListener('mousemove', this.onMouseMove);
+    this.touch.dispose();
   }
 
   requestPointerLock(): void {
@@ -58,6 +251,7 @@ export class InputManager {
 
   sample(): ControlIntent {
     const pad = primaryGamepad();
+    const touch = this.touch.sample();
     let moveX = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     let moveY = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     let lookX = this.pointerDX * 0.0022;
@@ -66,6 +260,15 @@ export class InputManager {
     let jump = this.consumeJump();
     let sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight');
     let toggleCamera = this.consumeCamera();
+
+    moveX += touch.moveX;
+    moveY += touch.moveY;
+    lookX += touch.lookX;
+    lookY += touch.lookY;
+    fire ||= touch.fire;
+    jump ||= touch.jump;
+    sprint ||= touch.sprint;
+    toggleCamera ||= touch.toggleCamera;
 
     if (pad) {
       moveX += deadzone(pad.axes[0] ?? 0);
@@ -139,6 +342,7 @@ export class InputManager {
     this.firing = false;
     this.pointerDX = 0;
     this.pointerDY = 0;
+    this.touch.clear();
   };
 }
 

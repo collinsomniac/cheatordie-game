@@ -46,6 +46,7 @@ startButton.addEventListener('click', async () => {
     const adaptive = new AdaptiveResolution(engine);
     const game = new Game(scene, canvas, hud, physicsMode);
     running = true;
+    document.body.classList.add('game-running');
     startPanel.classList.add('hidden');
     game.input.requestPointerLock();
 
