@@ -22,5 +22,10 @@ jobs:
           package-manager-cache: false
       - name: Install
         run: npm install --no-audit --no-fund
+      - name: Capture bootstrap lockfile
+        run: |
+          echo '===CHEATORDIE_LOCK_START==='
+          cat package-lock.json
+          echo '===CHEATORDIE_LOCK_END==='
       - name: Typecheck and build
         run: npm run build
