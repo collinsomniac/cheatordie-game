@@ -11,6 +11,7 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { BodySlot, CameraMode, ControlIntent, RobotController, RobotFaction, RobotStats, TargetSnapshot } from './types';
 import { MutationLoadout, type MutationId } from './mutations';
 import { GAME } from './config';
+import type { PhysicsMode } from './world';
 
 const BASE_STATS: RobotStats = {
   maxHealth: 100,
@@ -87,7 +88,8 @@ export class RobotEntity {
   readonly id: string;
   readonly faction: RobotFaction;
   readonly meshParts: AbstractMesh[] = [];
-  readonly character: PhysicsCharacterController;
+  readonly character: PhysicsCharacterController | null;
+  private readonly kinematicCollider: Mesh | null;
   health = 100;
   yaw = 0;
   pitch = 0;
@@ -109,6 +111,7 @@ export class RobotEntity {
     spawn: Vector3,
     color: Color3,
     callbacks: RobotCallbacks,
+    private readonly physicsMode: PhysicsMode,
   ) {
     this.id = id;
     this.faction = faction;
@@ -118,7 +121,21 @@ export class RobotEntity {
     this.root.position.copyFrom(spawn);
     this.root.rotationQuaternion = Quaternion.Identity();
     this.createBody(color);
-    this.character = new PhysicsCharacterController(spawn, { capsuleHeight: 1.1, capsuleRadius: 0.38 }, scene);
+
+    if (this.physicsMode === 'havok') {
+      this.character = new PhysicsCharacterController(spawn, { capsuleHeight: 1.1, capsuleRadius: 0.38 }, scene);
+      this.kinematicCollider = null;
+    } else {
+      this.character = null;
+      this.kinematicCollider = MeshBuilder.CreateBox(`${id}-kinematic-collider`, { size: 0.2 }, scene);
+      this.kinematicCollider.position.copyFrom(spawn);
+      this.kinematicCollider.visibility = 0;
+      this.kinematicCollider.isPickable = false;
+      this.kinematicCollider.checkCollisions = false;
+      this.kinematicCollider.ellipsoid.copyFromFloats(0.38, 0.92, 0.38);
+      this.kinematicCollider.ellipsoidOffset.copyFromFloats(0, 0.92, 0);
+    }
+
     this.health = this.stats.maxHealth;
   }
 
@@ -198,15 +215,19 @@ export class RobotEntity {
     this.alive = true;
     this.health = this.stats.maxHealth;
     this.velocity.setAll(0);
-    this.character.setVelocity(Vector3.Zero());
-    this.character.setPosition(position);
+    if (this.character) {
+      this.character.setVelocity(Vector3.Zero());
+      this.character.setPosition(position);
+    }
+    if (this.kinematicCollider) this.kinematicCollider.position.copyFrom(position);
     this.root.position.copyFrom(position);
     for (const mesh of this.meshParts) mesh.setEnabled(true);
     this.controller.reset?.();
   }
 
   dispose(): void {
-    this.character.dispose();
+    this.character?.dispose();
+    this.kinematicCollider?.dispose(false, true);
     // Materials are deliberately shared across robots and owned by the scene cache.
     this.root.dispose(false, false);
   }
@@ -320,8 +341,49 @@ export class RobotEntity {
     );
     if (wish.lengthSquared() > 1) wish.normalize();
 
-    const support = this.character.checkSupport(dt, new Vector3(0, -1, 0));
-    this.grounded = support.supportedState !== 0;
+    if (this.character) {
+      const support = this.character.checkSupport(dt, new Vector3(0, -1, 0));
+      this.grounded = support.supportedState !== 0;
+      this.applyHorizontalMotion(intent, wish, stats, dt);
+
+      if (this.grounded) {
+        if (!intent.jump) this.applyGroundRetention(wish, stats, dt);
+        this.velocity.y = intent.jump ? stats.jumpSpeed : Math.max(this.velocity.y, -1.5);
+      }
+
+      this.character.setVelocity(this.velocity);
+      this.character.integrate(dt, support, new Vector3(0, GAME.gravity, 0));
+      this.velocity.copyFrom(this.character.getVelocity());
+      this.root.position.copyFrom(this.character.getPosition());
+    } else if (this.kinematicCollider) {
+      this.grounded = this.checkKinematicGrounded();
+      this.applyHorizontalMotion(intent, wish, stats, dt);
+
+      if (this.grounded) {
+        if (!intent.jump) this.applyGroundRetention(wish, stats, dt);
+        this.velocity.y = intent.jump ? stats.jumpSpeed : -1.2;
+      } else {
+        this.velocity.y += GAME.gravity * dt;
+      }
+
+      const beforeY = this.kinematicCollider.position.y;
+      this.kinematicCollider.moveWithCollisions(this.velocity.scale(dt));
+      const movedY = this.kinematicCollider.position.y - beforeY;
+
+      if (this.velocity.y < 0 && Math.abs(movedY) < 0.0005) {
+        this.grounded = true;
+        this.velocity.y = -1.2;
+      } else if (this.velocity.y > 0 && movedY < this.velocity.y * dt * 0.25) {
+        this.velocity.y = 0;
+      }
+
+      this.root.position.copyFrom(this.kinematicCollider.position);
+    }
+
+    this.root.rotationQuaternion = Quaternion.FromEulerAngles(0, this.yaw, 0);
+  }
+
+  private applyHorizontalMotion(intent: ControlIntent, wish: Vector3, stats: RobotStats, dt: number): void {
     const speed = stats.moveSpeed * (intent.sprint ? stats.sprintMultiplier : 1);
     const targetX = wish.x * speed;
     const targetZ = wish.z * speed;
@@ -329,21 +391,26 @@ export class RobotEntity {
     const blend = 1 - Math.exp(-stats.acceleration * control * dt);
     this.velocity.x += (targetX - this.velocity.x) * blend;
     this.velocity.z += (targetZ - this.velocity.z) * blend;
+  }
 
-    if (this.grounded) {
-      if (!intent.jump) {
-        const retention = wish.lengthSquared() > 0 ? stats.momentumRetention : 0.25;
-        this.velocity.x *= Math.pow(retention, dt * 4);
-        this.velocity.z *= Math.pow(retention, dt * 4);
-      }
-      this.velocity.y = intent.jump ? stats.jumpSpeed : Math.max(this.velocity.y, -1.5);
-    }
+  private applyGroundRetention(wish: Vector3, stats: RobotStats, dt: number): void {
+    const retention = wish.lengthSquared() > 0 ? stats.momentumRetention : 0.25;
+    this.velocity.x *= Math.pow(retention, dt * 4);
+    this.velocity.z *= Math.pow(retention, dt * 4);
+  }
 
-    this.character.setVelocity(this.velocity);
-    this.character.integrate(dt, support, new Vector3(0, GAME.gravity, 0));
-    this.velocity.copyFrom(this.character.getVelocity());
-    this.root.position.copyFrom(this.character.getPosition());
-    this.root.rotationQuaternion = Quaternion.FromEulerAngles(0, this.yaw, 0);
+  private checkKinematicGrounded(): boolean {
+    if (!this.kinematicCollider) return false;
+    const origin = this.kinematicCollider.position.add(new Vector3(0, 0.12, 0));
+    const ray = new Ray(origin, new Vector3(0, -1, 0), 0.26);
+    const hit = this.scene.pickWithRay(
+      ray,
+      (mesh: AbstractMesh) =>
+        mesh.isPickable &&
+        mesh.isEnabled() &&
+        mesh.metadata?.robotId === undefined,
+    );
+    return Boolean(hit?.hit);
   }
 
   private applyAimAssist(intent: ControlIntent, stats: RobotStats, targets: readonly TargetSnapshot[]): void {
