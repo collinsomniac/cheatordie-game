@@ -7,6 +7,8 @@ import { LinesMesh } from '@babylonjs/core/Meshes/linesMesh';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Ray } from '@babylonjs/core/Culling/ray';
 import { Scene } from '@babylonjs/core/scene';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { BotController, InputManager, PlayerController } from './input';
 import { RobotEntity, type RobotCallbacks, type ShotResult } from './robot';
 import { COLORS, GAME } from './config';
@@ -43,6 +45,11 @@ export class Game {
   private waveOfferTimer: number | null = null;
   private respawnTimer: number | null = null;
   private toastTimer: number | null = null;
+  private weaponRoot!: TransformNode;
+  private muzzleFlash!: AbstractMesh;
+  private weaponKick = 0;
+  private muzzleClock = 0;
+  private weaponBobPhase = 0;
 
   constructor(
     private readonly scene: Scene,
@@ -62,6 +69,7 @@ export class Game {
     this.thirdCamera.minZ = 0.1;
     this.thirdCamera.inputs.clear();
     scene.activeCamera = this.firstCamera;
+    this.createViewModel();
     this.createTracerPool();
 
     window.addEventListener('keydown', this.onUpgradeKey);
@@ -75,14 +83,16 @@ export class Game {
     }
     if (!this.player.alive) {
       this.updateTracers();
-      this.updateCamera();
+      this.updateCamera(dt);
+      this.updateViewModel(dt);
       this.updateHUD();
       return;
     }
 
     for (const robot of this.robots) robot.update(dt);
     this.updateTracers();
-    this.updateCamera();
+    this.updateCamera(dt);
+    this.updateViewModel(dt);
     this.updateHUD();
 
     if (!this.player.alive) return;
@@ -104,6 +114,7 @@ export class Game {
     this.clearWaveOffer();
     if (this.respawnTimer !== null) window.clearTimeout(this.respawnTimer);
     if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.weaponRoot.dispose(false, true);
     for (const robot of this.robots) robot.dispose();
   }
 
@@ -118,7 +129,13 @@ export class Game {
       onDeath: (robot) => {
         if (robot === this.player) this.playerDied();
       },
-      onShot: (robot, result) => this.spawnTracer(robot.eyePosition, result.hitPoint, robot.faction === 'player'),
+      onShot: (robot, result) => {
+        if (robot === this.player) {
+          this.weaponKick = Math.min(1.35, this.weaponKick + 0.72);
+          this.muzzleClock = 0.045;
+        }
+        this.spawnTracer(robot.eyePosition, result.hitPoint, robot.faction === 'player');
+      },
     };
   }
 
@@ -305,7 +322,7 @@ export class Game {
     }
   }
 
-  private updateCamera(): void {
+  private updateCamera(_dt: number): void {
     const eye = this.player.eyePosition;
     const forward = this.player.forward;
     if (this.player.cameraMode === 'first') {
@@ -322,6 +339,80 @@ export class Game {
       this.thirdCamera.target.copyFrom(this.player.root.position.add(new Vector3(0, 1.0, 0)));
       this.player.meshParts.forEach((mesh) => { mesh.visibility = 1; });
     }
+  }
+
+  private createViewModel(): void {
+    this.weaponRoot = new TransformNode('viewmodel-root', this.scene);
+    this.weaponRoot.parent = this.firstCamera;
+
+    const metal = new StandardMaterial('viewmodel-metal', this.scene);
+    metal.diffuseColor = new Color3(0.08, 0.11, 0.11);
+    metal.specularColor = Color3.Black();
+    metal.freeze();
+
+    const accent = new StandardMaterial('viewmodel-accent', this.scene);
+    accent.diffuseColor = new Color3(0.18, 0.25, 0.21);
+    accent.specularColor = Color3.Black();
+    accent.freeze();
+
+    const glow = new StandardMaterial('viewmodel-glow', this.scene);
+    glow.diffuseColor = Color3.Black();
+    glow.emissiveColor = Color3.FromHexString(COLORS.player).scale(0.95);
+    glow.freeze();
+
+    const addBox = (
+      name: string,
+      width: number,
+      height: number,
+      depth: number,
+      x: number,
+      y: number,
+      z: number,
+      material: StandardMaterial,
+    ): AbstractMesh => {
+      const mesh = MeshBuilder.CreateBox(name, { width, height, depth }, this.scene);
+      mesh.parent = this.weaponRoot;
+      mesh.position.set(x, y, z);
+      mesh.material = material;
+      mesh.isPickable = false;
+      mesh.renderingGroupId = 2;
+      return mesh;
+    };
+
+    addBox('viewmodel-receiver', 0.22, 0.16, 0.54, 0, 0, 0, metal);
+    addBox('viewmodel-stock', 0.18, 0.20, 0.25, -0.02, -0.04, -0.31, accent);
+    addBox('viewmodel-barrel', 0.10, 0.10, 0.48, 0.01, 0.015, 0.47, metal);
+    addBox('viewmodel-sight', 0.05, 0.06, 0.12, 0, 0.12, 0.04, glow);
+    this.muzzleFlash = addBox('viewmodel-muzzle', 0.13, 0.13, 0.08, 0.01, 0.015, 0.74, glow);
+    this.muzzleFlash.setEnabled(false);
+    this.weaponRoot.position.set(0.34, -0.29, 0.72);
+  }
+
+  private updateViewModel(dt: number): void {
+    const enabled = this.player.cameraMode === 'first' && this.player.alive;
+    this.weaponRoot.setEnabled(enabled);
+    if (!enabled) return;
+
+    this.weaponKick = Math.max(0, this.weaponKick - dt * 7.5);
+    this.muzzleClock = Math.max(0, this.muzzleClock - dt);
+    this.muzzleFlash.setEnabled(this.muzzleClock > 0);
+
+    const planarSpeed = Math.hypot(this.player.velocity.x, this.player.velocity.z);
+    const moveAmount = Math.min(1, planarSpeed / 8);
+    this.weaponBobPhase += dt * (5.5 + planarSpeed * 0.7);
+    const sway = Math.sin(this.weaponBobPhase) * 0.012 * moveAmount;
+    const bob = Math.abs(Math.cos(this.weaponBobPhase)) * 0.009 * moveAmount;
+
+    this.weaponRoot.position.set(
+      0.34 + sway,
+      -0.29 + bob - this.weaponKick * 0.022,
+      0.72 - this.weaponKick * 0.075,
+    );
+    this.weaponRoot.rotation.set(
+      0.025 + this.weaponKick * 0.085,
+      0,
+      -sway * 0.65,
+    );
   }
 
   private updateHUD(): void {
