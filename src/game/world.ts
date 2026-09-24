@@ -11,7 +11,6 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { PhysicsAggregate } from '@babylonjs/core/Physics/v2/physicsAggregate';
 import { PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin';
 import '@babylonjs/core/Collisions/collisionCoordinator';
-import HavokPhysics from '@babylonjs/havok';
 import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
 import { COLORS, GAME } from './config';
 
@@ -82,6 +81,8 @@ export async function createWorld(engine: SupportedEngine): Promise<WorldBundle>
 
   if (!forceKinematic) {
     try {
+      // Keep the ~2.1 MB Havok WASM asset completely off the kinematic/iOS-safe boot path.
+      const { default: HavokPhysics } = await import('@babylonjs/havok');
       const havok = await withTimeout(HavokPhysics(), 5000, 'Havok/WASM initialization timed out');
       const physics = new HavokPlugin(true, havok);
       scene.enablePhysics(new Vector3(0, GAME.gravity, 0), physics);

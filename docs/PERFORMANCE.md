@@ -37,3 +37,8 @@ Havok runs as WASM but the initial game does not require SharedArrayBuffer or cr
 ## Regression path
 
 WebGPU is primary; `?backend=webgl` deliberately remains supported for device/backend regression testing. Record device, iOS version, backend, internal render scale, FPS and encounter size when reporting performance bugs.
+
+
+## Conditional WASM loading
+
+Havok is dynamically imported only when the Havok physics path is selected. The current production WASM asset is roughly 2.1 MB raw (~669 KB gzip in CI output); iOS currently defaults to native kinematic collision, so normal phone boots do not need to fetch or instantiate that asset. `?physics=havok` opts into the WASM path explicitly.
