@@ -29,3 +29,10 @@ Useful contemporary references include ULTRAKILL (extremely fast first-person re
 ## Cheat vocabulary (fictionalized)
 
 We borrow the conceptual language of classic shooter cheating without implementing exploits against real games: aimbot/aim magnetism, trigger automation, ESP/radar, recoil compensation, movement scripts, bunny-hop/auto-strafe, speed/time manipulation, prediction, fake-latency/desync simulation, and eventually autonomous/bot control. Each should expose tunable parameters and counterplay rather than a binary on/off switch.
+
+
+## 2026 watchlist: Babylon Lite
+
+Babylon Lite is now a credible performance-oriented sibling to Babylon.js: WebGPU-only, data-oriented, highly tree-shakable, and already carrying a partial Havok V2 implementation. It is deliberately not a drop-in replacement for full Babylon.js and still has feature gaps relevant to this game, including a partial physics surface and an in-progress unified input abstraction. We keep full Babylon.js for the prototype's mature character controller, WebGL regression path, and broader ecosystem, while preserving game/controller/entity boundaries that make a future Lite experiment realistic rather than a rewrite.
+
+A migration should be benchmark-driven: duplicate one arena and representative combat workload in Lite, measure cold bytes, CPU frame time, GPU time, memory, and controller/physics behavior on iPhone, and move only if the practical gain justifies the narrower API surface.
