@@ -33,7 +33,18 @@ async function bootCase(browser, label, query, expectedBackend) {
 
   await page.goto(origin + base + query, { waitUntil: 'domcontentloaded' });
   await page.locator('#start-button').click();
-  await page.locator('#start-panel').waitFor({ state: 'hidden', timeout: 30_000 });
+  try {
+    await page.locator('#start-panel').waitFor({ state: 'hidden', timeout: 15_000 });
+  } catch (error) {
+    const backendAtFailure = await page.locator('#backend-label').textContent().catch(() => null);
+    const bootText = await page.locator('#start-panel p').textContent().catch(() => null);
+    throw new Error(
+      label + ': boot never completed. stage=' + backendAtFailure +
+      '\nboot=' + bootText +
+      '\nruntime=' + (runtimeErrors.length ? runtimeErrors.join('\n') : '(none)') +
+      '\noriginal=' + (error instanceof Error ? error.message : String(error))
+    );
+  }
   await page.waitForTimeout(500);
 
   const backend = await page.locator('#backend-label').textContent();
