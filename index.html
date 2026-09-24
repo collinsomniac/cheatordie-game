@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#090b0c" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>CHEAT OR DIE // Prototype</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="game" aria-label="CHEAT OR DIE game canvas"></canvas>
+      <div id="hud" class="hud">
+        <div class="hud__top">
+          <div><strong id="wave-label">WAVE 01</strong><span id="backend-label">BOOTING</span></div>
+          <div class="hud__health"><span>CHASSIS</span><div class="meter"><i id="health-fill"></i></div><b id="health-label">100</b></div>
+        </div>
+        <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><i></i></div>
+        <div class="hud__bottom">
+          <div><span>CARBINE</span><strong id="ammo-label">∞</strong></div>
+          <div id="mutation-strip" class="mutations"></div>
+        </div>
+      </div>
+      <div id="start-panel" class="panel panel--start">
+        <div class="panel__eyebrow">UNLICENSED COMBAT CHASSIS // BUILD 0.1</div>
+        <h1>CHEAT<br/><em>OR</em> DIE</h1>
+        <p>A browser-native FPS where cheating is the build system. Survive waves, steal illegal firmware, mutate the same robot architecture your enemies use.</p>
+        <button id="start-button" type="button">BOOT CHASSIS</button>
+        <div class="controls"><b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/><b>DESKTOP</b> WASD · mouse · click · Space · Shift · V</div>
+      </div>
+      <div id="upgrade-panel" class="panel panel--upgrade hidden" aria-live="polite">
+        <div class="panel__eyebrow">ILLEGAL FIRMWARE DETECTED</div>
+        <h2>CHOOSE A CHEAT</h2>
+        <div id="upgrade-cards" class="upgrade-grid"></div>
+      </div>
+      <div id="toast" class="toast hidden"></div>
+      <div id="perf" class="perf"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
