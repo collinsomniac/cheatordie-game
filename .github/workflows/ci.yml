@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,6 +29,11 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Typecheck and build
         run: npm run build
+      - name: Cache smoke-test browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-1.55.0-${{ runner.os }}
       - name: Install smoke-test browser
         run: |
           npm install --no-save --package-lock=false playwright@1.55.0
