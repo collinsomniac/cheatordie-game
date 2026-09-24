@@ -19,13 +19,9 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: 22
-          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: package-lock.json
       - name: Install
-        run: npm install --no-audit --no-fund
-      - name: Capture bootstrap lockfile
-        run: |
-          echo '===CHEATORDIE_LOCK_START==='
-          cat package-lock.json
-          echo '===CHEATORDIE_LOCK_END==='
+        run: npm ci --no-audit --no-fund
       - name: Typecheck and build
         run: npm run build
