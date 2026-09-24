@@ -107,3 +107,7 @@ try {
   await browser?.close();
   preview.kill('SIGTERM');
 }
+
+// Vite preview can leave a grandchild/pipe alive after its npm wrapper is killed.
+// Reaching this line means every assertion passed, so terminate the smoke harness explicitly.
+process.exit(0);
