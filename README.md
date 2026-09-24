@@ -37,6 +37,6 @@ See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PERFORMANCE.md`](docs
 
 The repository includes an Actions workflow that builds Vite and publishes `dist/`. The Vite base path is pinned to `/cheatordie-game/` for project Pages hosting.
 
-**One-time repository setting:** Pages is currently not enabled for this new repository. In GitHub open **Settings → Pages → Build and deployment → Source → GitHub Actions**. Then rerun **Deploy GitHub Pages** (or make any new commit). The expected public URL is `https://collinsomniac.github.io/cheatordie-game/`.
+Pages is enabled and deployment is handled by GitHub Actions. The current build is published at **https://collinsomniac.github.io/cheatordie-game/**.
 
 Useful regression switches: `?backend=webgl` forces WebGL2; `?compat=1` keeps Babylon's WebGPU compatibility mode enabled.

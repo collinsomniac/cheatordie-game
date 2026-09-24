@@ -134,8 +134,14 @@ export class RobotEntity {
     return new Vector3(Math.sin(this.yaw) * cp, -Math.sin(this.pitch), Math.cos(this.yaw) * cp).normalize();
   }
 
-  get snapshot(): TargetSnapshot {
-    return { id: this.id, position: this.eyePosition.clone(), velocity: this.velocity.clone(), alive: this.alive };
+  snapshot(visible: boolean): TargetSnapshot {
+    return {
+      id: this.id,
+      position: this.eyePosition,
+      velocity: this.velocity.clone(),
+      alive: this.alive,
+      visible,
+    };
   }
 
   addMutation(id: MutationId): void {
@@ -147,15 +153,17 @@ export class RobotEntity {
   update(dt: number): void {
     if (!this.alive) return;
     const stats = this.stats;
+    const needsTargets = this.controller.kind === 'bot' || stats.aimAssist > 0 || stats.triggerAngle > 0;
+    const targets = needsTargets ? this.callbacks.getTargets(this) : [];
     const intent = this.controller.sample({
       position: this.root.position,
       yaw: this.yaw,
       pitch: this.pitch,
       dt,
-      targets: this.callbacks.getTargets(this),
+      targets,
     });
 
-    this.applyAimAssist(intent, stats);
+    this.applyAimAssist(intent, stats, targets);
     this.yaw += intent.lookX;
     this.pitch = Math.max(-1.25, Math.min(1.25, this.pitch + intent.lookY));
 
@@ -167,7 +175,7 @@ export class RobotEntity {
     this.move(intent, stats, dt);
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
 
-    const triggerbot = stats.triggerAngle > 0 && this.hasTargetInCone(stats.triggerAngle);
+    const triggerbot = stats.triggerAngle > 0 && this.hasTargetInCone(stats.triggerAngle, targets);
     if ((intent.fire || triggerbot) && this.fireCooldown <= 0) this.fire(stats);
   }
 
@@ -292,9 +300,9 @@ export class RobotEntity {
     this.root.rotationQuaternion = Quaternion.FromEulerAngles(0, this.yaw, 0);
   }
 
-  private applyAimAssist(intent: ControlIntent, stats: RobotStats): void {
+  private applyAimAssist(intent: ControlIntent, stats: RobotStats, targets: readonly TargetSnapshot[]): void {
     if (stats.aimAssist <= 0) return;
-    const target = this.closestAimTarget(0.22);
+    const target = this.closestAimTarget(0.22, targets);
     if (!target) return;
     const delta = target.position.subtract(this.eyePosition);
     const desiredYaw = Math.atan2(delta.x, delta.z);
@@ -303,17 +311,17 @@ export class RobotEntity {
     intent.lookY += (desiredPitch - this.pitch) * stats.aimAssist;
   }
 
-  private hasTargetInCone(angle: number): boolean {
-    return this.closestAimTarget(angle) !== null;
+  private hasTargetInCone(angle: number, targets: readonly TargetSnapshot[]): boolean {
+    return this.closestAimTarget(angle, targets) !== null;
   }
 
-  private closestAimTarget(maxAngle: number): TargetSnapshot | null {
+  private closestAimTarget(maxAngle: number, targets: readonly TargetSnapshot[]): TargetSnapshot | null {
     let best: TargetSnapshot | null = null;
     let bestAngle = maxAngle;
     const forward = this.forward;
     const eye = this.eyePosition;
-    for (const target of this.callbacks.getTargets(this)) {
-      if (!target.alive) continue;
+    for (const target of targets) {
+      if (!target.alive || !target.visible) continue;
       const direction = target.position.subtract(eye).normalize();
       const angle = Math.acos(Math.max(-1, Math.min(1, Vector3.Dot(forward, direction))));
       if (angle < bestAngle) {

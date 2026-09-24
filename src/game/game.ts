@@ -34,12 +34,15 @@ export class Game {
   private readonly thirdCamera: ArcRotateCamera;
   private wave = 0;
   private waveTransition = false;
-  private pausedForUpgrade = false;
+  private upgradeOpen = false;
   private readonly tracerPool: Array<{ mesh: LinesMesh; expiresAt: number }> = [];
   private tracerCursor = 0;
   private upgradeChoices: MutationDefinition[] = [];
   private upgradeIndex = 0;
   private upgradePadLatch = false;
+  private waveOfferTimer: number | null = null;
+  private respawnTimer: number | null = null;
+  private toastTimer: number | null = null;
 
   constructor(
     private readonly scene: Scene,
@@ -66,25 +69,41 @@ export class Game {
   }
 
   update(dt: number): void {
-    if (this.pausedForUpgrade) {
+    if (this.upgradeOpen) {
       this.handleUpgradeGamepad();
       return;
     }
+    if (!this.player.alive) {
+      this.updateTracers();
+      this.updateCamera();
+      this.updateHUD();
+      return;
+    }
+
     for (const robot of this.robots) robot.update(dt);
     this.updateTracers();
     this.updateCamera();
     this.updateHUD();
 
-    const aliveEnemies = this.robots.filter((robot) => robot.faction === 'enemy' && robot.alive);
-    if (aliveEnemies.length === 0 && !this.waveTransition) {
+    if (!this.player.alive) return;
+
+    let aliveEnemies = 0;
+    for (const robot of this.robots) {
+      if (robot.faction === 'enemy' && robot.alive) aliveEnemies += 1;
+    }
+    if (aliveEnemies === 0 && !this.waveTransition) {
       this.waveTransition = true;
-      window.setTimeout(() => this.offerUpgrade(), 550);
+      this.clearWaveOffer();
+      this.waveOfferTimer = window.setTimeout(() => this.offerUpgrade(), 550);
     }
   }
 
   dispose(): void {
     window.removeEventListener('keydown', this.onUpgradeKey);
     this.input.dispose();
+    this.clearWaveOffer();
+    if (this.respawnTimer !== null) window.clearTimeout(this.respawnTimer);
+    if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
     for (const robot of this.robots) robot.dispose();
   }
 
@@ -104,7 +123,30 @@ export class Game {
   }
 
   private getTargets(robot: RobotEntity): TargetSnapshot[] {
-    return this.robots.filter((other) => other !== robot && other.faction !== robot.faction && other.alive).map((other) => other.snapshot);
+    const targets: TargetSnapshot[] = [];
+    for (const other of this.robots) {
+      if (other === robot || other.faction === robot.faction || !other.alive) continue;
+      targets.push(other.snapshot(this.hasLineOfSight(robot, other)));
+    }
+    return targets;
+  }
+
+  private hasLineOfSight(observer: RobotEntity, target: RobotEntity): boolean {
+    const origin = observer.eyePosition;
+    const destination = target.eyePosition;
+    const delta = destination.subtract(origin);
+    const distance = delta.length();
+    if (distance <= 0.001) return true;
+
+    const ray = new Ray(origin, delta.scale(1 / distance), distance);
+    const obstruction = this.scene.pickWithRay(
+      ray,
+      (mesh: AbstractMesh) =>
+        mesh.isPickable &&
+        mesh.isEnabled() &&
+        mesh.metadata?.robotId === undefined,
+    );
+    return !obstruction?.hit;
   }
 
   private resolveShot(shooter: RobotEntity, origin: Vector3, direction: Vector3, range: number): ShotResult {
@@ -120,9 +162,10 @@ export class Game {
   }
 
   private spawnWave(): void {
+    this.clearWaveOffer();
     this.wave += 1;
     this.waveTransition = false;
-    this.pausedForUpgrade = false;
+    this.upgradeOpen = false;
     this.hud.upgradePanel.classList.add('hidden');
     this.hud.waveLabel.textContent = `WAVE ${String(this.wave).padStart(2, '0')}`;
 
@@ -162,7 +205,10 @@ export class Game {
   }
 
   private offerUpgrade(): void {
-    this.pausedForUpgrade = true;
+    this.waveOfferTimer = null;
+    if (!this.player.alive) return;
+    if (this.robots.some((robot) => robot.faction === 'enemy' && robot.alive)) return;
+    this.upgradeOpen = true;
     const choices = drawMutationChoices(3);
     this.upgradeChoices = choices;
     this.upgradeIndex = 0;
@@ -179,14 +225,14 @@ export class Game {
   }
 
   private chooseUpgrade(choice: MutationDefinition): void {
-    if (!this.pausedForUpgrade) return;
+    if (!this.upgradeOpen) return;
     this.player.addMutation(choice.id);
     this.toast(`${choice.code} INSTALLED`);
     this.spawnWave();
   }
 
   private onUpgradeKey = (event: KeyboardEvent): void => {
-    if (!this.pausedForUpgrade) return;
+    if (!this.upgradeOpen) return;
     const numeric = Number(event.key);
     if (numeric >= 1 && numeric <= this.upgradeChoices.length) {
       this.chooseUpgrade(this.upgradeChoices[numeric - 1]!);
@@ -225,13 +271,24 @@ export class Game {
   }
 
   private playerDied(): void {
-    this.pausedForUpgrade = true;
+    this.clearWaveOffer();
+    this.upgradeOpen = false;
+    this.hud.upgradePanel.classList.add('hidden');
     this.toast('CHASSIS FAILURE // REBOOTING');
-    window.setTimeout(() => {
+    if (this.respawnTimer !== null) window.clearTimeout(this.respawnTimer);
+    this.respawnTimer = window.setTimeout(() => {
+      this.respawnTimer = null;
       this.player.respawn(new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z));
       this.wave = Math.max(0, this.wave - 1);
       this.spawnWave();
     }, 1200);
+  }
+
+  private clearWaveOffer(): void {
+    if (this.waveOfferTimer !== null) {
+      window.clearTimeout(this.waveOfferTimer);
+      this.waveOfferTimer = null;
+    }
   }
 
   private updateCamera(): void {
@@ -308,6 +365,10 @@ export class Game {
   private toast(message: string): void {
     this.hud.toast.textContent = message;
     this.hud.toast.classList.remove('hidden');
-    window.setTimeout(() => this.hud.toast.classList.add('hidden'), 1200);
+    if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.toastTimer = window.setTimeout(() => {
+      this.toastTimer = null;
+      this.hud.toast.classList.add('hidden');
+    }, 1200);
   }
 }

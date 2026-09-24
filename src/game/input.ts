@@ -144,10 +144,21 @@ export interface BotTuning {
   fireCone: number;
 }
 
+interface RememberedPoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export class BotController implements RobotController {
   readonly kind = 'bot' as const;
   private orbitSign = Math.random() < 0.5 ? -1 : 1;
   private retargetClock = 0;
+  private lastSeen: RememberedPoint | null = null;
+  private lastX: number | null = null;
+  private lastZ: number | null = null;
+  private stuckClock = 0;
+  private evadeClock = 0;
 
   constructor(private readonly tuning: BotTuning) {}
 
@@ -155,10 +166,31 @@ export class BotController implements RobotController {
     const target = context.targets.find((candidate) => candidate.alive);
     if (!target) return this.empty();
 
-    const dx = target.position.x - context.position.x;
-    const dy = target.position.y - context.position.y;
-    const dz = target.position.z - context.position.z;
+    if (target.visible) {
+      this.lastSeen = { x: target.position.x, y: target.position.y, z: target.position.z };
+    }
+
+    const remembered = target.visible ? target.position : this.lastSeen;
+    if (!remembered) {
+      // Search rather than tracking an opponent through geometry before ever seeing them.
+      return {
+        moveX: this.orbitSign * 0.28,
+        moveY: 0.18,
+        lookX: this.orbitSign * 0.014,
+        lookY: 0,
+        fire: false,
+        jump: false,
+        sprint: false,
+        toggleCamera: false,
+      };
+    }
+
+    const dx = remembered.x - context.position.x;
+    const dy = remembered.y - context.position.y;
+    const dz = remembered.z - context.position.z;
     const flatDistance = Math.hypot(dx, dz);
+    if (!target.visible && flatDistance < 1.2) this.lastSeen = null;
+
     const desiredYaw = Math.atan2(dx, dz);
     const desiredPitch = -Math.atan2(dy, Math.max(0.001, flatDistance));
     const yawError = this.wrapAngle(desiredYaw - context.yaw);
@@ -170,17 +202,60 @@ export class BotController implements RobotController {
       if (Math.random() < 0.35) this.orbitSign *= -1;
     }
 
-    const forward = flatDistance > this.tuning.preferredDistance + 1.5 ? 1 : flatDistance < this.tuning.preferredDistance - 1.5 ? -0.7 : 0.1;
+    let forward = flatDistance > this.tuning.preferredDistance + 1.5
+      ? 1
+      : flatDistance < this.tuning.preferredDistance - 1.5
+        ? -0.7
+        : 0.1;
+    let strafe = this.orbitSign * this.tuning.strafe;
+    let jump = false;
+
+    if (this.lastX !== null && this.lastZ !== null) {
+      const displacement = Math.hypot(context.position.x - this.lastX, context.position.z - this.lastZ);
+      if ((Math.abs(forward) > 0.2 || Math.abs(strafe) > 0.2) && displacement < 0.008) {
+        this.stuckClock += context.dt;
+      } else {
+        this.stuckClock = Math.max(0, this.stuckClock - context.dt * 2);
+      }
+    }
+    this.lastX = context.position.x;
+    this.lastZ = context.position.z;
+
+    if (this.stuckClock > 0.42) {
+      this.stuckClock = 0;
+      this.evadeClock = 0.72;
+      this.orbitSign *= -1;
+    }
+    if (this.evadeClock > 0) {
+      this.evadeClock = Math.max(0, this.evadeClock - context.dt);
+      strafe = this.orbitSign;
+      forward = -0.45;
+      jump = this.evadeClock > 0.5;
+    }
+
     return {
-      moveX: this.orbitSign * this.tuning.strafe,
+      moveX: strafe,
       moveY: forward,
       lookX: yawError * this.tuning.lookResponse * context.dt,
       lookY: pitchError * this.tuning.lookResponse * context.dt,
-      fire: Math.abs(yawError) < this.tuning.fireCone && Math.abs(pitchError) < this.tuning.fireCone * 0.8 && flatDistance < 12 + 18 * this.tuning.aggression,
-      jump: false,
+      fire:
+        target.visible &&
+        Math.abs(yawError) < this.tuning.fireCone &&
+        Math.abs(pitchError) < this.tuning.fireCone * 0.8 &&
+        flatDistance < 12 + 18 * this.tuning.aggression,
+      jump,
       sprint: flatDistance > this.tuning.preferredDistance + 5,
       toggleCamera: false,
     };
+  }
+
+  reset(): void {
+    this.lastSeen = null;
+    this.lastX = null;
+    this.lastZ = null;
+    this.stuckClock = 0;
+    this.evadeClock = 0;
+    this.retargetClock = 0;
   }
 
   private empty(): ControlIntent {

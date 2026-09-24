@@ -46,6 +46,7 @@ export interface TargetSnapshot {
   position: Vector3;
   velocity: Vector3;
   alive: boolean;
+  visible: boolean;
 }
 
 export interface ControllerContext {
