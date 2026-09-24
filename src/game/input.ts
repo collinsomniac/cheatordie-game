@@ -44,7 +44,7 @@ class TouchControls {
   private readonly sprintButton: HTMLElement | null;
   private readonly cameraButton: HTMLElement | null;
 
-  constructor(private readonly root: HTMLElement | null) {
+  constructor(root: HTMLElement | null) {
     this.moveStick = root?.querySelector<HTMLElement>('[data-touch-stick="move"]') ?? null;
     this.lookStick = root?.querySelector<HTMLElement>('[data-touch-stick="look"]') ?? null;
     this.moveKnob = this.moveStick?.querySelector<HTMLElement>('.touch-stick__knob') ?? null;
