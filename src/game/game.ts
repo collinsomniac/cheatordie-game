@@ -274,7 +274,7 @@ export class Game {
     if (Vector3.DistanceSquared(start, end) <= 0.0004 || this.tracerPool.length === 0) return;
     const tracer = this.tracerPool[this.tracerCursor]!;
     this.tracerCursor = (this.tracerCursor + 1) % this.tracerPool.length;
-    MeshBuilder.CreateLines(null, { points: [start, end], instance: tracer.mesh }, this.scene);
+    MeshBuilder.CreateLines(tracer.mesh.name, { points: [start, end], instance: tracer.mesh }, this.scene);
     tracer.mesh.color = friendly ? new Color3(0.45, 1, 0.67) : new Color3(1, 0.25, 0.2);
     tracer.mesh.setEnabled(true);
     tracer.expiresAt = performance.now() + 48;
