@@ -15,10 +15,17 @@ import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
 import { COLORS, GAME } from './config';
 
 export type SupportedEngine = Engine | WebGPUEngine;
+export type PhysicsMode = 'havok' | 'kinematic';
 
 export interface EngineBundle {
   engine: SupportedEngine;
   backend: 'webgpu' | 'webgl2';
+}
+
+export interface WorldBundle {
+  scene: Scene;
+  physicsMode: PhysicsMode;
+  physicsFallbackReason: string | null;
 }
 
 export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBundle> {
@@ -35,8 +42,6 @@ export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBun
         powerPreference: 'high-performance',
       });
       await engine.initAsync();
-      // Babylon's non-compatibility WebGPU path records/reuses render bundles and
-      // reduces CPU command overhead. ?compat=1 is the regression escape hatch.
       engine.compatibilityMode = params.get('compat') === '1';
       return { engine, backend: 'webgpu' };
     } catch (error) {
@@ -55,15 +60,37 @@ export async function createEngine(canvas: HTMLCanvasElement): Promise<EngineBun
   return { engine, backend: 'webgl2' };
 }
 
-export async function createScene(engine: SupportedEngine): Promise<Scene> {
+export async function createWorld(engine: SupportedEngine): Promise<WorldBundle> {
   const scene = new Scene(engine);
   scene.clearColor = Color4.FromHexString(`${COLORS.sky}ff`);
   scene.skipPointerMovePicking = true;
   scene.constantlyUpdateMeshUnderPointer = false;
 
-  const havok = await HavokPhysics();
-  const physics = new HavokPlugin(true, havok);
-  scene.enablePhysics(new Vector3(0, GAME.gravity, 0), physics);
+  const requested = new URLSearchParams(location.search).get('physics');
+  const forceKinematic = requested === 'kinematic';
+  const forceHavok = requested === 'havok';
+
+  let physicsMode: PhysicsMode = 'kinematic';
+  let physicsFallbackReason: string | null = null;
+
+  if (!forceKinematic) {
+    try {
+      const havok = await HavokPhysics();
+      const physics = new HavokPlugin(true, havok);
+      scene.enablePhysics(new Vector3(0, GAME.gravity, 0), physics);
+      physicsMode = 'havok';
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      if (forceHavok) throw new Error(`Havok initialization failed: ${reason}`);
+      physicsFallbackReason = reason;
+      console.warn('Havok initialization failed; using native kinematic collisions.', error);
+    }
+  }
+
+  if (physicsMode === 'kinematic') {
+    scene.collisionsEnabled = true;
+    scene.gravity.copyFromFloats(0, GAME.gravity, 0);
+  }
 
   const hemi = new HemisphericLight('ambient', new Vector3(0.2, 1, 0), scene);
   hemi.intensity = 0.78;
@@ -73,8 +100,8 @@ export async function createScene(engine: SupportedEngine): Promise<Scene> {
   key.intensity = 0.45;
   key.diffuse = new Color3(0.82, 0.92, 0.85);
 
-  buildArena(scene);
-  return scene;
+  buildArena(scene, physicsMode);
+  return { scene, physicsMode, physicsFallbackReason };
 }
 
 function material(scene: Scene, name: string, hex: string, emissive = false): StandardMaterial {
@@ -87,35 +114,50 @@ function material(scene: Scene, name: string, hex: string, emissive = false): St
   return mat;
 }
 
-function staticBox(scene: Scene, name: string, size: Vector3, position: Vector3, mat: StandardMaterial): Mesh {
+function staticBox(
+  scene: Scene,
+  physicsMode: PhysicsMode,
+  name: string,
+  size: Vector3,
+  position: Vector3,
+  mat: StandardMaterial,
+): Mesh {
   const mesh = MeshBuilder.CreateBox(name, { width: size.x, height: size.y, depth: size.z }, scene);
   mesh.position.copyFrom(position);
   mesh.material = mat;
   mesh.isPickable = true;
+
+  if (physicsMode === 'havok') {
+    new PhysicsAggregate(mesh, PhysicsShapeType.BOX, { mass: 0, friction: 0.72, restitution: 0 }, scene);
+  } else {
+    mesh.checkCollisions = true;
+  }
+
   mesh.freezeWorldMatrix();
-  new PhysicsAggregate(mesh, PhysicsShapeType.BOX, { mass: 0, friction: 0.72, restitution: 0 }, scene);
   return mesh;
 }
 
-function buildArena(scene: Scene): void {
+function buildArena(scene: Scene, physicsMode: PhysicsMode): void {
   const floorMat = material(scene, 'floor-mat', COLORS.floor);
   const wallMat = material(scene, 'wall-mat', COLORS.wall);
   const trimMat = material(scene, 'trim-mat', COLORS.trim);
   const dangerMat = material(scene, 'danger-mat', '#ff3d55', true);
   const half = GAME.arenaHalfSize;
 
-  staticBox(scene, 'floor', new Vector3(half * 2, 0.5, half * 2), new Vector3(0, -0.25, 0), floorMat);
-  staticBox(scene, 'north-wall', new Vector3(half * 2, 4, 0.6), new Vector3(0, 2, half), wallMat);
-  staticBox(scene, 'south-wall', new Vector3(half * 2, 4, 0.6), new Vector3(0, 2, -half), wallMat);
-  staticBox(scene, 'east-wall', new Vector3(0.6, 4, half * 2), new Vector3(half, 2, 0), wallMat);
-  staticBox(scene, 'west-wall', new Vector3(0.6, 4, half * 2), new Vector3(-half, 2, 0), wallMat);
+  staticBox(scene, physicsMode, 'floor', new Vector3(half * 2, 0.5, half * 2), new Vector3(0, -0.25, 0), floorMat);
+  staticBox(scene, physicsMode, 'north-wall', new Vector3(half * 2, 4, 0.6), new Vector3(0, 2, half), wallMat);
+  staticBox(scene, physicsMode, 'south-wall', new Vector3(half * 2, 4, 0.6), new Vector3(0, 2, -half), wallMat);
+  staticBox(scene, physicsMode, 'east-wall', new Vector3(0.6, 4, half * 2), new Vector3(half, 2, 0), wallMat);
+  staticBox(scene, physicsMode, 'west-wall', new Vector3(0.6, 4, half * 2), new Vector3(-half, 2, 0), wallMat);
 
   const obstacles = [
     [-8, 1.15, -3, 3, 2.3, 6], [8, 1.15, 3, 3, 2.3, 6],
     [-3, 0.8, 7, 6, 1.6, 2.2], [3, 0.8, -7, 6, 1.6, 2.2],
     [-12, 1.4, 12, 2.5, 2.8, 2.5], [12, 1.4, -12, 2.5, 2.8, 2.5],
   ] as const;
-  obstacles.forEach(([x, y, z, sx, sy, sz], index) => staticBox(scene, `cover-${index}`, new Vector3(sx, sy, sz), new Vector3(x, y, z), index % 2 ? wallMat : trimMat));
+  obstacles.forEach(([x, y, z, sx, sy, sz], index) =>
+    staticBox(scene, physicsMode, `cover-${index}`, new Vector3(sx, sy, sz), new Vector3(x, y, z), index % 2 ? wallMat : trimMat),
+  );
 
   for (let x = -18; x <= 18; x += 6) {
     const strip = MeshBuilder.CreateBox(`strip-${x}`, { width: 2.4, height: 0.018, depth: 0.06 }, scene);

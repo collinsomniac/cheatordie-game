@@ -15,6 +15,7 @@ import { COLORS, GAME } from './config';
 import { drawMutationChoices, type MutationDefinition } from './mutations';
 import type { TargetSnapshot } from './types';
 import { RandomSource, mixSeed, runSeedFromLocation } from './rng';
+import type { PhysicsMode } from './world';
 
 export interface HUDRefs {
   healthFill: HTMLElement;
@@ -61,12 +62,13 @@ export class Game {
     private readonly scene: Scene,
     canvas: HTMLCanvasElement,
     private readonly hud: HUDRefs,
+    private readonly physicsMode: PhysicsMode,
   ) {
     this.input = new InputManager(canvas);
     this.seed = runSeedFromLocation();
     this.upgradeRandom = new RandomSource(mixSeed(this.seed, 0x55504752));
     const callbacks = this.callbacks();
-    this.player = new RobotEntity(scene, 'player', 'player', new PlayerController(this.input), new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z), Color3.FromHexString(COLORS.player), callbacks);
+    this.player = new RobotEntity(scene, 'player', 'player', new PlayerController(this.input), new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z), Color3.FromHexString(COLORS.player), callbacks, this.physicsMode);
     this.robots.push(this.player);
 
     this.firstCamera = new FreeCamera('first-camera', this.player.eyePosition, scene);
@@ -219,6 +221,7 @@ export class Game {
         position,
         Color3.FromHexString(i % 2 ? COLORS.enemy : COLORS.enemyAccent),
         this.callbacks(),
+        this.physicsMode,
       );
       if (this.wave >= 3 && i === 0) bot.addMutation('speedhack');
       if (this.wave >= 4 && i === 1) bot.addMutation('recoil-null');

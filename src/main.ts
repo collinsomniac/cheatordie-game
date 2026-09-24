@@ -16,7 +16,8 @@ startButton.addEventListener('click', async () => {
   startButton.textContent = 'INITIALIZING…';
   try {
     // Keep the landing shell tiny; the engine/WASM path is fetched only after the player boots.
-    const [{ createEngine, createScene }, { AdaptiveResolution }, { Game }, { GAME }] = await Promise.all([
+    backendLabel.textContent = 'LOADING MODULES';
+    const [{ createEngine, createWorld }, { AdaptiveResolution }, { Game }, { GAME }] = await Promise.all([
       import('./game/world'),
       import('./game/performance'),
       import('./game/game'),
@@ -36,11 +37,14 @@ startButton.addEventListener('click', async () => {
       damageVignette: requireElement('#damage-vignette'),
     };
 
+    backendLabel.textContent = 'GRAPHICS';
     const { engine, backend } = await createEngine(canvas);
-    backendLabel.textContent = backend.toUpperCase();
-    const scene = await createScene(engine);
+    backendLabel.textContent = `${backend.toUpperCase()} · PHYSICS`;
+    const { scene, physicsMode, physicsFallbackReason } = await createWorld(engine);
+    backendLabel.textContent = `${backend.toUpperCase()} · ${physicsMode.toUpperCase()}`;
+    if (physicsFallbackReason) console.info('Physics fallback reason:', physicsFallbackReason);
     const adaptive = new AdaptiveResolution(engine);
-    const game = new Game(scene, canvas, hud);
+    const game = new Game(scene, canvas, hud, physicsMode);
     running = true;
     startPanel.classList.add('hidden');
     game.input.requestPointerLock();
@@ -57,7 +61,7 @@ startButton.addEventListener('click', async () => {
         accumulator -= GAME.fixedStep;
       }
       adaptive.update(frameDt);
-      perf.textContent = `${backend.toUpperCase()} · ${adaptive.label} · SEED ${game.seed}`;
+      perf.textContent = `${backend.toUpperCase()} · ${physicsMode.toUpperCase()} · ${adaptive.label} · SEED ${game.seed}`;
       scene.render();
     });
 
@@ -70,8 +74,9 @@ startButton.addEventListener('click', async () => {
     startButton.disabled = false;
     startButton.textContent = 'RETRY BOOT';
     const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error && error.stack ? `\n${error.stack.split('\n').slice(0, 4).join('\n')}` : '';
     const body = startPanel.querySelector('p');
-    if (body) body.textContent = `Failed to initialize the combat runtime: ${message}`;
+    if (body) body.textContent = `Failed to initialize the combat runtime: ${message}${stack}`;
   }
 });
 
