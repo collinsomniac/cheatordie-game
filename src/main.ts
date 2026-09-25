@@ -73,7 +73,7 @@ startButton.addEventListener('click', async () => {
       loadoutToggle: requireElement<HTMLButtonElement>('#loadout-toggle'),
       loadoutClose: requireElement<HTMLButtonElement>('#loadout-close'),
       espMarker: requireElement('#esp-marker'),
-      targetNoiseButton: requireElement<HTMLButtonElement>('#target-noise'),
+      targetSpinButton: requireElement<HTMLButtonElement>('#target-spin'),
     };
 
     bootStatus.textContent = 'INITIALIZING RENDERER';

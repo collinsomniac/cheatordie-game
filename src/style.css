@@ -301,3 +301,35 @@ body:not(.game-running) .touch-controls {
   .panel--start .controls { font-size: 8px; line-height: 1.4; }
   .panel--start .boot-actions button { padding: 9px 14px; }
 }
+
+
+/* Installed hardware/status tray */
+.mutations { gap: 4px; }
+.mutation-chip {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  opacity: .58 !important;
+  transition: opacity 90ms linear, transform 90ms linear, box-shadow 90ms linear;
+}
+.mutation-chip i { font-style: normal; font-size: 12px; line-height: 1; }
+.mutation-chip b { font-size: 7px; letter-spacing: .06em; }
+.mutation-chip[data-activation="triggered"] { border-style: dashed; }
+.mutation-chip.is-active {
+  opacity: 1 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(143,255,178,.18);
+}
+.mutation-chip[data-mutation-id="spinbot-lite"] i,
+.mutation-chip[data-mutation-id="spinbot-rig"] i {
+  animation: status-spin .8s linear infinite;
+}
+@keyframes status-spin { to { transform: rotate(360deg); } }
+
+/* ESP level 1 is telemetry only; level 2 gets the Babylon full-body ghost as well. */
+.esp-marker { display: grid; gap: 2px; min-width: 86px; text-align: center; }
+.esp-marker b { font-size: 8px; letter-spacing: .10em; }
+.esp-marker span { font-size: 7px; opacity: .78; }
+.esp-marker[data-mode="tag"] { color: #f0b565; border-color: rgba(240,181,101,.58); }
+.esp-marker[data-mode="xray"] { color: #69d8ff; border-color: rgba(105,216,255,.72); box-shadow: 0 0 12px rgba(105,216,255,.12); }

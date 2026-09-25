@@ -34,7 +34,7 @@ export interface HUDRefs {
   loadoutToggle: HTMLButtonElement;
   loadoutClose: HTMLButtonElement;
   espMarker: HTMLElement;
-  targetNoiseButton: HTMLButtonElement;
+  targetSpinButton: HTMLButtonElement;
 }
 
 const SLOT_LABELS: Record<BodySlot, string> = {
@@ -64,6 +64,10 @@ export class Game {
   private loadoutOpen = false;
   private weaponRoot!: TransformNode;
   private muzzleFlash!: AbstractMesh;
+  private offhandMuzzleFlash!: AbstractMesh;
+  private readonly offhandViewMeshes: AbstractMesh[] = [];
+  private readonly wallhackGhosts: AbstractMesh[] = [];
+  private targetSpinInstanceId: string | null = null;
   private weaponKick = 0;
   private muzzleClock = 0;
   private weaponBobPhase = 0;
@@ -111,6 +115,7 @@ export class Game {
     );
     this.dummy.yaw = Math.PI;
     this.robots.push(this.dummy);
+    this.createWallhackSilhouette(this.dummy);
 
     this.firstCamera = new FreeCamera('first-camera', this.player.eyePosition, scene);
     this.firstCamera.minZ = 0.05;
@@ -130,7 +135,7 @@ export class Game {
     this.hud.loadoutClose.addEventListener('click', this.closeLoadout);
     this.hud.loadoutBody.addEventListener('click', this.onBodySlotClick);
     this.hud.partCatalog.addEventListener('click', this.onPartCatalogClick);
-    this.hud.targetNoiseButton.addEventListener('click', this.pulseTargetNoise);
+    this.hud.targetSpinButton.addEventListener('click', this.toggleTargetSpin);
     window.addEventListener('keydown', this.onKeyDown);
 
     this.renderLoadout();
@@ -160,9 +165,10 @@ export class Game {
     this.hud.loadoutClose.removeEventListener('click', this.closeLoadout);
     this.hud.loadoutBody.removeEventListener('click', this.onBodySlotClick);
     this.hud.partCatalog.removeEventListener('click', this.onPartCatalogClick);
-    this.hud.targetNoiseButton.removeEventListener('click', this.pulseTargetNoise);
+    this.hud.targetSpinButton.removeEventListener('click', this.toggleTargetSpin);
     window.removeEventListener('keydown', this.onKeyDown);
     this.weaponRoot.dispose(false, true);
+    for (const ghost of this.wallhackGhosts) ghost.dispose(false, false);
     for (const item of this.damageNumbers) item.element.remove();
     this.damageNumbers.length = 0;
     for (const robot of this.robots) robot.dispose();
@@ -330,9 +336,24 @@ export class Game {
     this.hud.partCatalog.replaceChildren(...cards);
   }
 
-  private pulseTargetNoise = (): void => {
-    this.dummy.pulseNoise(1);
-    this.toast('TARGET NOISE BURST // 1.0');
+  private toggleTargetSpin = (): void => {
+    if (this.targetSpinInstanceId) {
+      this.dummy.removeMutation(this.targetSpinInstanceId);
+      this.targetSpinInstanceId = null;
+      this.hud.targetSpinButton.textContent = 'TARGET SPINBOT: OFF';
+      this.toast('TARGET ANTI-AIM DISABLED');
+      return;
+    }
+
+    const installed = this.dummy.addMutation('spinbot-rig');
+    if (!installed) {
+      this.toast('TARGET SPINBOT // MOUNT BLOCKED');
+      return;
+    }
+
+    this.targetSpinInstanceId = installed.instanceId;
+    this.hud.targetSpinButton.textContent = 'TARGET SPINBOT: ON';
+    this.toast('TARGET ANTI-AIM ENABLED');
   };
 
   private onKeyDown = (event: KeyboardEvent): void => {
@@ -406,6 +427,17 @@ export class Game {
     addBox('viewmodel-sight', 0.05, 0.06, 0.12, 0, 0.12, 0.04, glow);
     this.muzzleFlash = addBox('viewmodel-muzzle', 0.13, 0.13, 0.08, 0.01, 0.015, 0.74, glow);
     this.muzzleFlash.setEnabled(false);
+
+    const offhand = [
+      addBox('viewmodel-off-receiver', 0.22, 0.16, 0.54, -0.68, 0, 0, metal),
+      addBox('viewmodel-off-stock', 0.18, 0.20, 0.25, -0.66, -0.04, -0.31, accent),
+      addBox('viewmodel-off-barrel', 0.10, 0.10, 0.48, -0.67, 0.015, 0.47, metal),
+      addBox('viewmodel-off-sight', 0.05, 0.06, 0.12, -0.68, 0.12, 0.04, glow),
+    ];
+    this.offhandMuzzleFlash = addBox('viewmodel-off-muzzle', 0.13, 0.13, 0.08, -0.67, 0.015, 0.74, glow);
+    this.offhandViewMeshes.push(...offhand, this.offhandMuzzleFlash);
+    for (const mesh of this.offhandViewMeshes) mesh.setEnabled(false);
+
     this.weaponRoot.position.set(0.34, -0.29, 0.72);
   }
 
@@ -416,7 +448,10 @@ export class Game {
 
     this.weaponKick = Math.max(0, this.weaponKick - dt * 7.5);
     this.muzzleClock = Math.max(0, this.muzzleClock - dt);
+    const dual = this.player.stats.dualWield > 0;
+    for (const mesh of this.offhandViewMeshes) mesh.setEnabled(dual);
     this.muzzleFlash.setEnabled(this.muzzleClock > 0);
+    this.offhandMuzzleFlash.setEnabled(dual && this.muzzleClock > 0);
 
     const planarSpeed = Math.hypot(this.player.velocity.x, this.player.velocity.z);
     const moveAmount = Math.min(1, planarSpeed / 8);
@@ -458,11 +493,19 @@ export class Game {
       this.lastMutationRevision = this.player.loadout.revision;
       this.hud.mutationStrip.replaceChildren(...this.player.loadout.entries().map(({ definition, stacks }) => {
         const chip = document.createElement('span');
+        chip.className = 'mutation-chip';
         chip.dataset.category = definition.category;
-        chip.textContent = `${definition.code}${stacks > 1 ? `×${stacks}` : ''}`;
+        chip.dataset.activation = definition.activation;
+        chip.dataset.mutationId = definition.id;
+        chip.innerHTML = `<i>${definition.icon}</i><b>${definition.code}${stacks > 1 ? `×${stacks}` : ''}</b>`;
         return chip;
       }));
       if (this.loadoutOpen) this.renderLoadout();
+    }
+
+    for (const chip of this.hud.mutationStrip.querySelectorAll<HTMLElement>('[data-mutation-id]')) {
+      const id = chip.dataset.mutationId as MutationId | undefined;
+      chip.classList.toggle('is-active', Boolean(id && this.player.isEffectActive(id)));
     }
   }
 
@@ -532,27 +575,55 @@ export class Game {
 
   private updateESP(): void {
     const sense = this.player.stats.wallSense;
-    const shouldShow = this.dummy.alive && (
-      sense === 2 ||
-      (sense === 1 && this.dummy.noisy)
-    );
+    const silhouette = sense >= 2 && this.dummy.alive;
+    for (const ghost of this.wallhackGhosts) ghost.setEnabled(silhouette);
 
-    if (!shouldShow) {
+    if (sense <= 0 || !this.dummy.alive) {
       this.hud.espMarker.classList.add('hidden');
       return;
     }
 
-    const projected = this.projectWorldPoint(this.dummy.eyePosition);
+    const projected = this.projectWorldPoint(this.dummy.eyePosition.add(new Vector3(0, 0.42, 0)));
     if (!projected) {
       this.hud.espMarker.classList.add('hidden');
       return;
     }
 
+    const distance = Vector3.Distance(this.player.root.position, this.dummy.root.position);
     const { x, y } = projected;
     this.hud.espMarker.classList.remove('hidden');
-    this.hud.espMarker.dataset.mode = sense === 2 ? 'xray' : 'echo';
-    this.hud.espMarker.textContent = sense === 2 ? 'XRAY // TARGET' : 'ECHO // SIGNAL';
-    this.hud.espMarker.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -50%)`;
+    this.hud.espMarker.dataset.mode = sense === 2 ? 'xray' : 'tag';
+    this.hud.espMarker.innerHTML = sense === 2
+      ? `<b>XRAY // TARGET-01</b><span>S${Math.ceil(this.dummy.shield)} · H${Math.ceil(this.dummy.health)} · ${distance.toFixed(0)}m</span>`
+      : `<b>TARGET-01</b><span>S${Math.ceil(this.dummy.shield)} · H${Math.ceil(this.dummy.health)} · ${distance.toFixed(0)}m</span>`;
+    this.hud.espMarker.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+  }
+
+  private createWallhackSilhouette(target: RobotEntity): void {
+    const xray = new StandardMaterial('wallhack-xray', this.scene);
+    xray.diffuseColor = Color3.Black();
+    xray.emissiveColor = new Color3(0.22, 0.82, 1.0);
+    xray.alpha = 0.30;
+    xray.disableDepthWrite = true;
+    xray.backFaceCulling = false;
+    xray.freeze();
+
+    // Rendering group 3 clears the world depth buffer first, producing the deliberate
+    // "through geometry" silhouette while preserving self-depth among the ghost meshes.
+    this.scene.setRenderingAutoClearDepthStencil(3, true, true, false);
+
+    for (const mesh of target.meshParts) {
+      if (!mesh.isPickable) continue;
+      const clone = mesh.clone(`xray-${mesh.name}`, target.root);
+      if (!clone) continue;
+      clone.material = xray;
+      clone.isPickable = false;
+      clone.metadata = undefined;
+      clone.renderingGroupId = 3;
+      clone.visibility = 0.92;
+      clone.setEnabled(false);
+      this.wallhackGhosts.push(clone);
+    }
   }
 
   private createTracerPool(): void {
