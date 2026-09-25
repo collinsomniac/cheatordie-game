@@ -26,7 +26,14 @@ button { font: inherit; -webkit-user-select: none; user-select: none; -webkit-to
 .hud__top strong, .hud__bottom strong { display: block; color: var(--acid); font-size: 13px; }
 .hud__top span, .hud__bottom span { opacity: .58; }
 .hud__right { display: flex; align-items: center; gap: 10px; }
-.hud__health { display: grid; grid-template-columns: auto minmax(76px, 15vw) 30px; align-items: center; gap: 7px; }
+.hud__vitals { display: grid; gap: 3px; min-width: min(250px, 28vw); }
+.vital { display: grid; grid-template-columns: 48px minmax(70px, 14vw) 28px; align-items: center; gap: 6px; }
+.vital span { font-size: 8px; letter-spacing: .1em; }
+.vital b { text-align: right; font-size: 10px; }
+.vital--shield span, .vital--shield b { color: #69cfff; }
+.vital--health span, .vital--health b { color: #ff6972; }
+.vital--shield .meter i { background: #69cfff; }
+.vital--health .meter i { background: #ff5965; }
 .hud-button { border: 1px solid var(--line); background: rgba(5,10,8,.74); color: var(--acid); padding: 7px 9px; font-size: 9px; font-weight: 900; letter-spacing: .1em; touch-action: manipulation; }
 .meter { width: 100%; height: 7px; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.15); overflow: hidden; }
 .meter i { display: block; width: 100%; height: 100%; background: var(--acid); transform-origin: left center; }
@@ -44,6 +51,12 @@ button { font: inherit; -webkit-user-select: none; user-select: none; -webkit-to
 .hit-marker.is-active { animation: hit-confirm 130ms ease-out; }
 .damage-vignette { position: absolute; inset: 0; opacity: 0; pointer-events: none; background: radial-gradient(circle at center, transparent 45%, rgba(255,28,51,.18) 78%, rgba(255,28,51,.55) 100%); }
 .damage-vignette.is-active { animation: damage-pulse 220ms ease-out; }
+.damage-layer { position: absolute; inset: 0; z-index: 7; pointer-events: none; overflow: hidden; }
+.damage-number { position: absolute; font-weight: 1000; font-size: clamp(15px, 2.5vw, 24px); line-height: 1; text-shadow: 0 2px 4px #000, 0 0 8px currentColor; will-change: transform, opacity; }
+.damage-number::after { content: attr(data-layer); display: block; margin-top: 2px; text-align: center; font-size: .32em; letter-spacing: .08em; opacity: .72; }
+.damage-number--shield { color: #69cfff; }
+.damage-number--health { color: #ff5965; }
+.damage-number.is-break { font-size: clamp(18px, 3vw, 28px); }
 @keyframes hit-confirm { 0% { opacity: 1; transform: translate(-50%, -50%) scale(1.25); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(.82); } }
 @keyframes damage-pulse { 0% { opacity: 1; } 100% { opacity: 0; } }
 
@@ -192,8 +205,8 @@ h1 em { color: var(--danger); font-style: normal; font-size: .62em; }
 }
 
 @media (max-width: 620px) and (orientation: landscape) {
-  .hud__health > span { display: none; }
-  .hud__health { grid-template-columns: 64px 26px; }
+  .vital { grid-template-columns: 38px 58px 24px; gap: 4px; }
+  .hud__vitals { min-width: 120px; }
   .loadout-layout { grid-template-columns: 44% 56%; }
   .part-catalog { grid-template-columns: 1fr; }
 }

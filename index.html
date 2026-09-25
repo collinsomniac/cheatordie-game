@@ -22,10 +22,13 @@
             <span id="backend-label">OFFLINE</span>
           </div>
           <div class="hud__right">
-            <div class="hud__health">
-              <span>INTEGRITY</span>
-              <div class="meter"><i id="health-fill"></i></div>
-              <b id="health-label">100</b>
+            <div class="hud__vitals">
+              <div class="vital vital--shield">
+                <span>SHIELD</span><div class="meter"><i id="shield-fill"></i></div><b id="shield-label">100</b>
+              </div>
+              <div class="vital vital--health">
+                <span>HEALTH</span><div class="meter"><i id="health-fill"></i></div><b id="health-label">100</b>
+              </div>
             </div>
           </div>
         </div>
@@ -33,6 +36,7 @@
         <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><i></i></div>
         <div id="hit-marker" class="hit-marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <div id="damage-vignette" class="damage-vignette" aria-hidden="true"></div>
+        <div id="damage-layer" class="damage-layer" aria-hidden="true"></div>
         <div id="esp-marker" class="esp-marker hidden" aria-hidden="true"></div>
 
         <div class="hud__bottom">

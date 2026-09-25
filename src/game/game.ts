@@ -10,7 +10,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { InputManager, PlayerController, StaticBotController } from './input';
-import { RobotEntity, type RobotCallbacks, type ShotResult } from './robot';
+import { RobotEntity, type DamageReport, type RobotCallbacks, type ShotResult } from './robot';
 import { COLORS, GAME } from './config';
 import { MUTATIONS, type MutationId } from './mutations';
 import type { BodySlot, TargetSnapshot } from './types';
@@ -19,6 +19,9 @@ import type { PhysicsMode } from './world';
 export interface HUDRefs {
   healthFill: HTMLElement;
   healthLabel: HTMLElement;
+  shieldFill: HTMLElement;
+  shieldLabel: HTMLElement;
+  damageLayer: HTMLElement;
   modeLabel: HTMLElement;
   ammoLabel: HTMLElement;
   mutationStrip: HTMLElement;
@@ -65,6 +68,13 @@ export class Game {
   private muzzleClock = 0;
   private weaponBobPhase = 0;
   private lastHealthDisplay = -1;
+  private lastShieldDisplay = -1;
+  private readonly damageNumbers: Array<{
+    element: HTMLElement;
+    point: Vector3;
+    born: number;
+    shield: boolean;
+  }> = [];
   private lastMutationRevision = -1;
   private lastAliveDisplay = true;
 
@@ -136,6 +146,7 @@ export class Game {
 
     this.updateTracers();
     this.updateCamera();
+    this.updateDamageNumbers();
     this.updateViewModel(dt);
     this.updateHUD();
     this.updateESP();
@@ -152,6 +163,8 @@ export class Game {
     this.hud.targetNoiseButton.removeEventListener('click', this.pulseTargetNoise);
     window.removeEventListener('keydown', this.onKeyDown);
     this.weaponRoot.dispose(false, true);
+    for (const item of this.damageNumbers) item.element.remove();
+    this.damageNumbers.length = 0;
     for (const robot of this.robots) robot.dispose();
   }
 
@@ -159,9 +172,12 @@ export class Game {
     return {
       getTargets: (robot) => this.getTargets(robot),
       resolveShot: (robot, origin, direction, range) => this.resolveShot(robot, origin, direction, range),
-      onDamage: (robot, _amount, attacker) => {
+      onDamage: (robot, report, attacker) => {
         if (robot === this.player) this.pulseDamage();
-        if (attacker === this.player && robot !== this.player) this.pulseHit();
+        if (attacker === this.player && robot !== this.player) {
+          this.pulseHit();
+          this.spawnDamageNumber(report);
+        }
       },
       onDeath: (robot) => {
         if (robot === this.dummy) this.scheduleDummyRespawn();
@@ -417,6 +433,14 @@ export class Game {
   }
 
   private updateHUD(): void {
+    const shieldDisplay = Math.ceil(this.player.shield);
+    if (shieldDisplay !== this.lastShieldDisplay) {
+      this.lastShieldDisplay = shieldDisplay;
+      const shieldPct = Math.max(0, this.player.shield / this.player.stats.maxShield);
+      this.hud.shieldFill.style.transform = `scaleX(${shieldPct})`;
+      this.hud.shieldLabel.textContent = shieldDisplay.toString();
+    }
+
     const healthDisplay = Math.ceil(this.player.health);
     if (healthDisplay !== this.lastHealthDisplay) {
       this.lastHealthDisplay = healthDisplay;
@@ -442,6 +466,70 @@ export class Game {
     }
   }
 
+  private spawnDamageNumber(report: DamageReport): void {
+    const amount = report.shieldDamage > 0 ? report.shieldDamage : report.healthDamage;
+    if (amount <= 0) return;
+
+    const element = document.createElement('span');
+    const shield = report.shieldDamage > 0;
+    element.className = `damage-number damage-number--${shield ? 'shield' : 'health'}${report.shieldBroke ? ' is-break' : ''}`;
+    element.textContent = Math.round(amount).toString();
+    element.dataset.layer = shield ? 'SHIELD' : 'HEALTH';
+    this.hud.damageLayer.appendChild(element);
+    this.damageNumbers.push({
+      element,
+      point: report.point.clone(),
+      born: performance.now(),
+      shield,
+    });
+  }
+
+  private updateDamageNumbers(): void {
+    const now = performance.now();
+    for (let index = this.damageNumbers.length - 1; index >= 0; index -= 1) {
+      const item = this.damageNumbers[index]!;
+      const age = (now - item.born) / 900;
+      if (age >= 1) {
+        item.element.remove();
+        this.damageNumbers.splice(index, 1);
+        continue;
+      }
+
+      const projected = this.projectWorldPoint(item.point);
+      if (!projected) {
+        item.element.style.opacity = '0';
+        continue;
+      }
+
+      const rise = 34 * age;
+      const scale = item.shield && age < 0.13 ? 1.16 : 1;
+      item.element.style.left = `${projected.x}px`;
+      item.element.style.top = `${projected.y}px`;
+      item.element.style.opacity = `${Math.max(0, 1 - age * age)}`;
+      item.element.style.transform = `translate(-50%, calc(-50% - ${rise}px)) scale(${scale})`;
+    }
+  }
+
+  private projectWorldPoint(point: Vector3): { x: number; y: number } | null {
+    if (!this.scene.activeCamera) return null;
+    const engine = this.scene.getEngine();
+    const renderWidth = engine.getRenderWidth();
+    const renderHeight = engine.getRenderHeight();
+    const viewport = this.scene.activeCamera.viewport.toGlobal(renderWidth, renderHeight);
+    const projected = Vector3.Project(
+      point,
+      Matrix.Identity(),
+      this.scene.getTransformMatrix(),
+      viewport,
+    );
+
+    if (projected.z < 0 || projected.z > 1) return null;
+    return {
+      x: projected.x * (this.canvas.clientWidth / renderWidth),
+      y: projected.y * (this.canvas.clientHeight / renderHeight),
+    };
+  }
+
   private updateESP(): void {
     const sense = this.player.stats.wallSense;
     const shouldShow = this.dummy.alive && (
@@ -449,29 +537,18 @@ export class Game {
       (sense === 1 && this.dummy.noisy)
     );
 
-    if (!shouldShow || !this.scene.activeCamera) {
+    if (!shouldShow) {
       this.hud.espMarker.classList.add('hidden');
       return;
     }
 
-    const engine = this.scene.getEngine();
-    const renderWidth = engine.getRenderWidth();
-    const renderHeight = engine.getRenderHeight();
-    const viewport = this.scene.activeCamera.viewport.toGlobal(renderWidth, renderHeight);
-    const projected = Vector3.Project(
-      this.dummy.eyePosition,
-      Matrix.Identity(),
-      this.scene.getTransformMatrix(),
-      viewport,
-    );
-
-    if (projected.z < 0 || projected.z > 1) {
+    const projected = this.projectWorldPoint(this.dummy.eyePosition);
+    if (!projected) {
       this.hud.espMarker.classList.add('hidden');
       return;
     }
 
-    const x = projected.x * (this.canvas.clientWidth / renderWidth);
-    const y = projected.y * (this.canvas.clientHeight / renderHeight);
+    const { x, y } = projected;
     this.hud.espMarker.classList.remove('hidden');
     this.hud.espMarker.dataset.mode = sense === 2 ? 'xray' : 'echo';
     this.hud.espMarker.textContent = sense === 2 ? 'XRAY // TARGET' : 'ECHO // SIGNAL';

@@ -55,6 +55,9 @@ startButton.addEventListener('click', async () => {
     const hud = {
       healthFill: requireElement('#health-fill'),
       healthLabel: requireElement('#health-label'),
+      shieldFill: requireElement('#shield-fill'),
+      shieldLabel: requireElement('#shield-label'),
+      damageLayer: requireElement('#damage-layer'),
       modeLabel: requireElement('#mode-label'),
       ammoLabel: requireElement('#ammo-label'),
       mutationStrip: requireElement('#mutation-strip'),
