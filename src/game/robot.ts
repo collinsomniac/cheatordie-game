@@ -29,6 +29,10 @@ const BASE_STATS: RobotStats = {
   triggerAngle: 0,
   momentumRetention: 0.72,
   wallSense: 0,
+  dualWield: 0,
+  antiAim: 0,
+  spinRate: 0,
+  resolver: 0,
 };
 
 interface RobotPalette {
@@ -111,6 +115,9 @@ export class RobotEntity {
   alive = true;
   noiseLevel = 0;
   private fireCooldown = 0;
+  private visualYaw = 0;
+  private spinPhase = 0;
+  private readonly effectPulseUntil = new Map<MutationId, number>();
   private cameraToggleLatch = false;
   private readonly callbacks: RobotCallbacks;
   private palette!: RobotPalette;
@@ -181,6 +188,8 @@ export class RobotEntity {
       velocity: this.velocity.clone(),
       alive: this.alive,
       visible,
+      antiAim: this.stats.antiAim,
+      visualYaw: this.visualYaw,
     };
   }
 
@@ -227,7 +236,9 @@ export class RobotEntity {
     }
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
 
-    const triggerbot = stats.triggerAngle > 0 && this.hasTargetInCone(stats.triggerAngle, targets);
+    const triggerbot = stats.triggerAngle > 0 && this.hasTargetInCone(stats.triggerAngle, targets, stats.resolver);
+    if (triggerbot) this.pulseEffect('triggerbot', 140);
+    if (this.loadout.has('bhop') && moving && Math.abs(this.velocity.y) > 0.8) this.pulseEffect('bhop', 120);
     if ((intent.fire || triggerbot) && this.fireCooldown <= 0) this.fire(stats);
   }
 
@@ -382,6 +393,22 @@ export class RobotEntity {
         else if (slot.startsWith('sensor')) glowBox(`hardlock-${slot}`, new Vector3(0.15, 0.24, 0.24), new Vector3(side * 0.39, 1.73, 0.00));
         else if (slot.startsWith('arm')) glowBox(`hardlock-${slot}`, new Vector3(0.17, 0.34, 0.18), new Vector3(side * 0.64, 1.16, 0.18));
         break;
+      case 'dual-wield-rig':
+        if (slot === 'arm-left') darkBox('akimbo-left-gun', new Vector3(0.16, 0.17, 0.74), new Vector3(-0.51, 1.12, 0.47));
+        else if (slot === 'arm-right') glowBox('akimbo-right-link', new Vector3(0.10, 0.22, 0.18), new Vector3(0.60, 1.18, 0.08));
+        else glowBox('akimbo-harness', new Vector3(0.66, 0.12, 0.12), new Vector3(0, 1.06, -0.28));
+        break;
+      case 'spinbot-lite':
+        glowBox(`spin-lite-${slot}`, new Vector3(0.30, 0.12, 0.14), new Vector3(0, 0.88, -0.29));
+        break;
+      case 'spinbot-rig':
+        if (slot === 'core') glowBox('spin-core', new Vector3(0.48, 0.18, 0.14), new Vector3(0, 0.90, -0.30));
+        else glowBox('spin-utility', new Vector3(0.20, 0.42, 0.14), new Vector3(-0.44, 1.30, -0.21));
+        break;
+      case 'resolver':
+        if (slot === 'head') glowBox('resolver-head', new Vector3(0.28, 0.09, 0.22), new Vector3(0, 1.94, -0.02));
+        else glowBox(`resolver-${slot}`, new Vector3(0.12, 0.18, 0.20), new Vector3(side * 0.37, 1.73, -0.05));
+        break;
     }
   }
 
@@ -434,7 +461,15 @@ export class RobotEntity {
       this.root.position.copyFrom(this.kinematicCollider.position);
     }
 
-    this.root.rotationQuaternion = Quaternion.FromEulerAngles(0, this.yaw, 0);
+    if (stats.spinRate > 0) {
+      this.spinPhase = (this.spinPhase + stats.spinRate * dt) % (Math.PI * 2);
+      const jitter = Math.sin(this.spinPhase * 3.1) * stats.antiAim * 0.42;
+      this.visualYaw = this.yaw + this.spinPhase + jitter;
+    } else {
+      this.spinPhase = 0;
+      this.visualYaw = this.yaw;
+    }
+    this.root.rotationQuaternion = Quaternion.FromEulerAngles(0, this.visualYaw, 0);
   }
 
   private applyHorizontalMotion(intent: ControlIntent, wish: Vector3, stats: RobotStats, dt: number): void {
@@ -469,27 +504,27 @@ export class RobotEntity {
 
   private applyAimAssist(intent: ControlIntent, stats: RobotStats, targets: readonly TargetSnapshot[]): void {
     if (stats.aimAssist <= 0) return;
-    const target = this.closestAimTarget(0.22, targets);
+    const target = this.closestAimTarget(0.22, targets, stats.resolver);
     if (!target) return;
-    const delta = target.position.subtract(this.eyePosition);
+    const delta = this.automatedAimPoint(target, stats.resolver).subtract(this.eyePosition);
     const desiredYaw = Math.atan2(delta.x, delta.z);
     const desiredPitch = -Math.atan2(delta.y, Math.hypot(delta.x, delta.z));
     intent.lookX += this.wrapAngle(desiredYaw - this.yaw) * stats.aimAssist;
     intent.lookY += (desiredPitch - this.pitch) * stats.aimAssist;
   }
 
-  private hasTargetInCone(angle: number, targets: readonly TargetSnapshot[]): boolean {
-    return this.closestAimTarget(angle, targets) !== null;
+  private hasTargetInCone(angle: number, targets: readonly TargetSnapshot[], resolver: number): boolean {
+    return this.closestAimTarget(angle, targets, resolver) !== null;
   }
 
-  private closestAimTarget(maxAngle: number, targets: readonly TargetSnapshot[]): TargetSnapshot | null {
+  private closestAimTarget(maxAngle: number, targets: readonly TargetSnapshot[], resolver: number): TargetSnapshot | null {
     let best: TargetSnapshot | null = null;
     let bestAngle = maxAngle;
     const forward = this.forward;
     const eye = this.eyePosition;
     for (const target of targets) {
       if (!target.alive || !target.visible) continue;
-      const direction = target.position.subtract(eye).normalize();
+      const direction = this.automatedAimPoint(target, resolver).subtract(eye).normalize();
       const angle = Math.acos(Math.max(-1, Math.min(1, Vector3.Dot(forward, direction))));
       if (angle < bestAngle) {
         bestAngle = angle;
@@ -499,15 +534,46 @@ export class RobotEntity {
     return best;
   }
 
+  private automatedAimPoint(target: TargetSnapshot, resolver: number): Vector3 {
+    const unresolved = Math.max(0, target.antiAim - resolver);
+    if (unresolved <= 0) return target.position;
+    const lateral = new Vector3(Math.cos(target.visualYaw), 0, -Math.sin(target.visualYaw));
+    return target.position.add(lateral.scale(unresolved * 0.72));
+  }
+
+  isEffectActive(id: MutationId): boolean {
+    if (id === 'spinbot-lite' || id === 'spinbot-rig') return this.loadout.has(id);
+    if (id === 'dual-wield-rig') return this.loadout.has(id);
+    if (id === 'wallhack-array' || id === 'acoustic-esp' || id === 'resolver' || id === 'hardlock-suite') return this.loadout.has(id);
+    return (this.effectPulseUntil.get(id) ?? 0) > performance.now();
+  }
+
+  private pulseEffect(id: MutationId, durationMs: number): void {
+    this.effectPulseUntil.set(id, performance.now() + durationMs);
+  }
+
   private fire(stats: RobotStats): void {
     this.fireCooldown = stats.fireInterval;
     this.pulseNoise(1);
-    const direction = this.forward;
-    const origin = this.eyePosition.add(direction.scale(0.45));
-    const result = this.callbacks.resolveShot(this, origin, direction, stats.range);
-    if (result.victim) result.victim.takeDamage(stats.damage, this, result.hitPoint);
+
+    const forward = this.forward;
+    const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
+    const origins = stats.dualWield
+      ? [
+          this.eyePosition.add(forward.scale(0.45)).add(right.scale(0.22)),
+          this.eyePosition.add(forward.scale(0.45)).add(right.scale(-0.22)),
+        ]
+      : [this.eyePosition.add(forward.scale(0.45))];
+
+    if (stats.dualWield) this.pulseEffect('dual-wield-rig', 180);
+
+    for (const origin of origins) {
+      const result = this.callbacks.resolveShot(this, origin, forward, stats.range);
+      if (result.victim) result.victim.takeDamage(stats.damage, this, result.hitPoint);
+      this.callbacks.onShot(this, result);
+    }
+
     this.pitch = Math.max(-1.25, this.pitch - stats.recoil);
-    this.callbacks.onShot(this, result);
   }
 
   private wrapAngle(angle: number): number {

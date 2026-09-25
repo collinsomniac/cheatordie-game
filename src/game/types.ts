@@ -41,6 +41,10 @@ export interface RobotStats {
   triggerAngle: number;
   momentumRetention: number;
   wallSense: 0 | 1 | 2;
+  dualWield: 0 | 1;
+  antiAim: number;
+  spinRate: number;
+  resolver: number;
 }
 
 export interface TargetSnapshot {
@@ -49,6 +53,8 @@ export interface TargetSnapshot {
   velocity: Vector3;
   alive: boolean;
   visible: boolean;
+  antiAim: number;
+  visualYaw: number;
 }
 
 export interface ControllerContext {
