@@ -161,7 +161,7 @@ export const MUTATIONS: Record<MutationId, MutationDefinition> = {
       stats.recoil *= 0.42;
       stats.resolver += 0.15;
     },
-  },,
+  },
   'dual-wield-rig': {
     id: 'dual-wield-rig',
     name: 'Akimbo Harness',
