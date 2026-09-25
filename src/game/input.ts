@@ -3,6 +3,8 @@ import type { ControlIntent, RobotController, ControllerContext } from './types'
 const DEADZONE = 0.15;
 const TOUCH_LOOK_X = 0.00315;
 const TOUCH_LOOK_Y = 0.00265;
+const TAP_FIRE_MAX_MS = 190;
+const TAP_FIRE_SLOP_PX = 8;
 
 export function primaryGamepad(): Gamepad | null {
   const pads = navigator.getGamepads();
@@ -30,17 +32,29 @@ class TouchControls {
   private lookAccumX = 0;
   private lookAccumY = 0;
   private fire = false;
+  private fireQueued = false;
   private sprintHeld = false;
   private jumpQueued = false;
   private cameraQueued = false;
+
   private movePointer: number | null = null;
+  private moveOriginX = 0;
+  private moveOriginY = 0;
+
   private lookPointer: number | null = null;
-  private firePointer: number | null = null;
   private lookLastX = 0;
   private lookLastY = 0;
+  private lookStartX = 0;
+  private lookStartY = 0;
+  private lookStartTime = 0;
+  private lookTravel = 0;
+
+  private firePointer: number | null = null;
   private fireLastX = 0;
   private fireLastY = 0;
 
+  private readonly root: HTMLElement | null;
+  private readonly moveZone: HTMLElement | null;
   private readonly moveStick: HTMLElement | null;
   private readonly moveKnob: HTMLElement | null;
   private readonly lookZone: HTMLElement | null;
@@ -50,6 +64,8 @@ class TouchControls {
   private readonly cameraButton: HTMLElement | null;
 
   constructor(root: HTMLElement | null) {
+    this.root = root;
+    this.moveZone = root?.querySelector<HTMLElement>('[data-touch-move]') ?? null;
     this.moveStick = root?.querySelector<HTMLElement>('[data-touch-stick="move"]') ?? null;
     this.moveKnob = this.moveStick?.querySelector<HTMLElement>('.touch-stick__knob') ?? null;
     this.lookZone = root?.querySelector<HTMLElement>('[data-touch-look]') ?? null;
@@ -64,9 +80,21 @@ class TouchControls {
     this.bindHold(this.sprintButton, (value) => { this.sprintHeld = value; });
     this.bindTap(this.jumpButton, () => { this.jumpQueued = true; });
     this.bindTap(this.cameraButton, () => { this.cameraQueued = true; });
+
+    // iOS still has edge cases where touch-action alone does not suppress double-tap zoom
+    // on absolutely positioned game controls. Active touch listeners keep the gameplay surface
+    // from falling back into Safari's page gestures while leaving menus/browser accessibility alone.
+    this.root?.addEventListener('touchstart', this.preventNativeTouch, { passive: false });
+    this.root?.addEventListener('touchmove', this.preventNativeTouch, { passive: false });
+    this.root?.addEventListener('dblclick', this.preventDoubleTap);
   }
 
   sample(): TouchSample {
+    if (this.isEditing()) {
+      this.clear();
+      return this.emptySample();
+    }
+
     const lookX = this.lookAccumX;
     const lookY = this.lookAccumY;
     this.lookAccumX = 0;
@@ -74,8 +102,10 @@ class TouchControls {
 
     const jump = this.jumpQueued;
     const toggleCamera = this.cameraQueued;
+    const queuedFire = this.fireQueued;
     this.jumpQueued = false;
     this.cameraQueued = false;
+    this.fireQueued = false;
 
     const autoSprint = this.moveY > 0.82 && Math.hypot(this.moveX, this.moveY) > 0.9;
     return {
@@ -83,7 +113,7 @@ class TouchControls {
       moveY: this.moveY,
       lookX,
       lookY,
-      fire: this.fire,
+      fire: this.fire || queuedFire,
       jump,
       sprint: this.sprintHeld || autoSprint,
       toggleCamera,
@@ -96,6 +126,7 @@ class TouchControls {
     this.lookAccumX = 0;
     this.lookAccumY = 0;
     this.fire = false;
+    this.fireQueued = false;
     this.sprintHeld = false;
     this.jumpQueued = false;
     this.cameraQueued = false;
@@ -103,6 +134,7 @@ class TouchControls {
     this.lookPointer = null;
     this.firePointer = null;
     this.resetMoveKnob();
+    this.moveStick?.classList.remove('is-engaged');
     this.lookZone?.classList.remove('is-active');
     this.fireButton?.classList.remove('is-active');
     this.sprintButton?.classList.remove('is-active');
@@ -110,28 +142,29 @@ class TouchControls {
 
   dispose(): void {
     this.clear();
+    this.root?.removeEventListener('touchstart', this.preventNativeTouch);
+    this.root?.removeEventListener('touchmove', this.preventNativeTouch);
+    this.root?.removeEventListener('dblclick', this.preventDoubleTap);
   }
 
   private bindMovement(): void {
-    const element = this.moveStick;
-    if (!element) return;
+    const zone = this.moveZone;
+    const stick = this.moveStick;
+    if (!zone || !stick) return;
 
     const update = (event: PointerEvent): void => {
-      if (this.movePointer !== event.pointerId) return;
+      if (this.movePointer !== event.pointerId || this.isEditing()) return;
       event.preventDefault();
-      const rect = element.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.37);
-      let x = (event.clientX - cx) / radius;
-      let y = (event.clientY - cy) / radius;
+
+      const radius = 54;
+      let x = (event.clientX - this.moveOriginX) / radius;
+      let y = (event.clientY - this.moveOriginY) / radius;
       const length = Math.hypot(x, y);
       if (length > 1) {
         x /= length;
         y /= length;
       }
 
-      // Small physical dead zone prevents micro-drift without flattening the rest of the curve.
       const magnitude = Math.hypot(x, y);
       if (magnitude < 0.08) {
         x = 0;
@@ -145,14 +178,20 @@ class TouchControls {
       }
     };
 
-    element.addEventListener('pointerdown', (event) => {
-      if (this.movePointer !== null) return;
+    zone.addEventListener('pointerdown', (event) => {
+      if (this.isEditing() || this.movePointer !== null || event.pointerType === 'mouse') return;
       event.preventDefault();
       this.movePointer = event.pointerId;
-      element.setPointerCapture?.(event.pointerId);
+      this.moveOriginX = event.clientX;
+      this.moveOriginY = event.clientY;
+      stick.style.left = `${event.clientX}px`;
+      stick.style.top = `${event.clientY}px`;
+      stick.classList.add('is-engaged');
+      zone.setPointerCapture?.(event.pointerId);
       update(event);
     });
-    element.addEventListener('pointermove', update);
+
+    zone.addEventListener('pointermove', update);
 
     const release = (event: PointerEvent): void => {
       if (this.movePointer !== event.pointerId) return;
@@ -161,10 +200,11 @@ class TouchControls {
       this.moveX = 0;
       this.moveY = 0;
       this.resetMoveKnob();
+      stick.classList.remove('is-engaged');
     };
-    element.addEventListener('pointerup', release);
-    element.addEventListener('pointercancel', release);
-    element.addEventListener('lostpointercapture', release);
+    zone.addEventListener('pointerup', release);
+    zone.addEventListener('pointercancel', release);
+    zone.addEventListener('lostpointercapture', release);
   }
 
   private bindLookSurface(): void {
@@ -172,19 +212,26 @@ class TouchControls {
     if (!element) return;
 
     element.addEventListener('pointerdown', (event) => {
-      if (this.lookPointer !== null) return;
+      if (this.isEditing() || this.lookPointer !== null || event.pointerType === 'mouse') return;
       event.preventDefault();
       this.lookPointer = event.pointerId;
       this.lookLastX = event.clientX;
       this.lookLastY = event.clientY;
+      this.lookStartX = event.clientX;
+      this.lookStartY = event.clientY;
+      this.lookStartTime = performance.now();
+      this.lookTravel = 0;
       element.setPointerCapture?.(event.pointerId);
       element.classList.add('is-active');
     });
 
     element.addEventListener('pointermove', (event) => {
-      if (this.lookPointer !== event.pointerId) return;
+      if (this.lookPointer !== event.pointerId || this.isEditing()) return;
       event.preventDefault();
-      this.addLookDelta(event.clientX - this.lookLastX, event.clientY - this.lookLastY);
+      const dx = event.clientX - this.lookLastX;
+      const dy = event.clientY - this.lookLastY;
+      this.lookTravel += Math.hypot(dx, dy);
+      this.addLookDelta(dx, dy);
       this.lookLastX = event.clientX;
       this.lookLastY = event.clientY;
     });
@@ -192,6 +239,23 @@ class TouchControls {
     const release = (event: PointerEvent): void => {
       if (this.lookPointer !== event.pointerId) return;
       event.preventDefault();
+
+      const elapsed = performance.now() - this.lookStartTime;
+      const displacement = Math.hypot(
+        event.clientX - this.lookStartX,
+        event.clientY - this.lookStartY,
+      );
+
+      // Right-surface gesture recognizer:
+      // quick stationary tap => one queued shot; meaningful drag => camera only.
+      if (!this.isEditing() &&
+          elapsed <= TAP_FIRE_MAX_MS &&
+          Math.max(displacement, this.lookTravel) <= TAP_FIRE_SLOP_PX) {
+        this.fireQueued = true;
+        element.classList.add('did-tap-fire');
+        window.setTimeout(() => element.classList.remove('did-tap-fire'), 90);
+      }
+
       this.lookPointer = null;
       element.classList.remove('is-active');
     };
@@ -205,7 +269,7 @@ class TouchControls {
     if (!element) return;
 
     element.addEventListener('pointerdown', (event) => {
-      if (this.firePointer !== null) return;
+      if (this.isEditing() || this.firePointer !== null) return;
       event.preventDefault();
       this.firePointer = event.pointerId;
       this.fireLastX = event.clientX;
@@ -215,9 +279,9 @@ class TouchControls {
       element.classList.add('is-active');
     });
 
-    // Fire-drag mirrors modern mobile shooters: keep firing while the same thumb fine-aims.
+    // Dedicated fire is continuous fire + relative look from the same thumb.
     element.addEventListener('pointermove', (event) => {
-      if (this.firePointer !== event.pointerId) return;
+      if (this.firePointer !== event.pointerId || this.isEditing()) return;
       event.preventDefault();
       this.addLookDelta(event.clientX - this.fireLastX, event.clientY - this.fireLastY);
       this.fireLastX = event.clientX;
@@ -237,7 +301,6 @@ class TouchControls {
   }
 
   private addLookDelta(dx: number, dy: number): void {
-    // Clamp pathological pointer jumps but preserve 1:1 relative response inside the useful range.
     this.lookAccumX += Math.max(-80, Math.min(80, dx)) * TOUCH_LOOK_X;
     this.lookAccumY += Math.max(-80, Math.min(80, dy)) * TOUCH_LOOK_Y;
   }
@@ -245,6 +308,7 @@ class TouchControls {
   private bindHold(element: HTMLElement | null, setValue: (value: boolean) => void): void {
     if (!element) return;
     element.addEventListener('pointerdown', (event) => {
+      if (this.isEditing()) return;
       event.preventDefault();
       element.setPointerCapture?.(event.pointerId);
       setValue(true);
@@ -263,6 +327,7 @@ class TouchControls {
   private bindTap(element: HTMLElement | null, action: () => void): void {
     if (!element) return;
     element.addEventListener('pointerdown', (event) => {
+      if (this.isEditing()) return;
       event.preventDefault();
       action();
       element.classList.add('is-active');
@@ -275,6 +340,32 @@ class TouchControls {
   private resetMoveKnob(): void {
     if (this.moveKnob) this.moveKnob.style.transform = 'translate(0px, 0px)';
   }
+
+  private isEditing(): boolean {
+    return document.body.classList.contains('controls-editing') ||
+      document.body.classList.contains('menu-open');
+  }
+
+  private emptySample(): TouchSample {
+    return {
+      moveX: 0,
+      moveY: 0,
+      lookX: 0,
+      lookY: 0,
+      fire: false,
+      jump: false,
+      sprint: false,
+      toggleCamera: false,
+    };
+  }
+
+  private preventNativeTouch = (event: TouchEvent): void => {
+    if (!document.body.classList.contains('menu-open')) event.preventDefault();
+  };
+
+  private preventDoubleTap = (event: MouseEvent): void => {
+    event.preventDefault();
+  };
 }
 
 function deadzone(value: number): number {
