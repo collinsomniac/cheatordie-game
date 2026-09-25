@@ -27,6 +27,7 @@ export interface ControlIntent {
 
 export interface RobotStats {
   maxHealth: number;
+  maxShield: number;
   moveSpeed: number;
   sprintMultiplier: number;
   airControl: number;

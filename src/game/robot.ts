@@ -15,6 +15,7 @@ import type { PhysicsMode } from './world';
 
 const BASE_STATS: RobotStats = {
   maxHealth: 100,
+  maxShield: 100,
   moveSpeed: 7.8,
   sprintMultiplier: 1.42,
   airControl: 0.34,
@@ -74,10 +75,18 @@ export interface ShotResult {
   hitPoint: Vector3;
 }
 
+export interface DamageReport {
+  requested: number;
+  shieldDamage: number;
+  healthDamage: number;
+  shieldBroke: boolean;
+  point: Vector3;
+}
+
 export interface RobotCallbacks {
   getTargets(robot: RobotEntity): TargetSnapshot[];
   resolveShot(robot: RobotEntity, origin: Vector3, direction: Vector3, range: number): ShotResult;
-  onDamage(robot: RobotEntity, amount: number, attacker: RobotEntity): void;
+  onDamage(robot: RobotEntity, report: DamageReport, attacker: RobotEntity): void;
   onDeath(robot: RobotEntity, attacker: RobotEntity): void;
   onShot(robot: RobotEntity, result: ShotResult): void;
 }
@@ -93,6 +102,7 @@ export class RobotEntity {
   readonly character: PhysicsCharacterController | null;
   private readonly kinematicCollider: Mesh | null;
   health = 100;
+  shield = 100;
   yaw = 0;
   pitch = 0;
   velocity = Vector3.Zero();
@@ -140,6 +150,7 @@ export class RobotEntity {
     }
 
     this.health = this.stats.maxHealth;
+    this.shield = this.stats.maxShield;
   }
 
   get stats(): RobotStats {
@@ -220,20 +231,44 @@ export class RobotEntity {
     if ((intent.fire || triggerbot) && this.fireCooldown <= 0) this.fire(stats);
   }
 
-  takeDamage(amount: number, attacker: RobotEntity): void {
-    if (!this.alive) return;
-    this.health = Math.max(0, this.health - amount);
-    this.callbacks.onDamage(this, amount, attacker);
+  takeDamage(amount: number, attacker: RobotEntity, point = this.eyePosition): DamageReport | null {
+    if (!this.alive) return null;
+
+    let shieldDamage = 0;
+    let healthDamage = 0;
+    const hadShield = this.shield > 0;
+
+    if (hadShield) {
+      shieldDamage = Math.min(this.shield, amount);
+      this.shield = Math.max(0, this.shield - shieldDamage);
+      // Intentionally no overflow: the hit that breaks the shield is fully consumed by it.
+    } else {
+      healthDamage = Math.min(this.health, amount);
+      this.health = Math.max(0, this.health - healthDamage);
+    }
+
+    const report: DamageReport = {
+      requested: amount,
+      shieldDamage,
+      healthDamage,
+      shieldBroke: hadShield && this.shield <= 0,
+      point: point.clone(),
+    };
+    this.callbacks.onDamage(this, report, attacker);
+
     if (this.health <= 0) {
       this.alive = false;
       for (const mesh of this.meshParts) mesh.setEnabled(false);
       this.callbacks.onDeath(this, attacker);
     }
+
+    return report;
   }
 
   respawn(position: Vector3): void {
     this.alive = true;
     this.health = this.stats.maxHealth;
+    this.shield = this.stats.maxShield;
     this.velocity.setAll(0);
     this.noiseLevel = 0;
     if (this.character) {
@@ -470,7 +505,7 @@ export class RobotEntity {
     const direction = this.forward;
     const origin = this.eyePosition.add(direction.scale(0.45));
     const result = this.callbacks.resolveShot(this, origin, direction, stats.range);
-    if (result.victim) result.victim.takeDamage(stats.damage, this);
+    if (result.victim) result.victim.takeDamage(stats.damage, this, result.hitPoint);
     this.pitch = Math.max(-1.25, this.pitch - stats.recoil);
     this.callbacks.onShot(this, result);
   }
