@@ -6,19 +6,25 @@ const startButton = document.querySelector<HTMLButtonElement>('#start-button');
 const backendLabel = document.querySelector<HTMLElement>('#backend-label');
 const perf = document.querySelector<HTMLElement>('#perf');
 
-if (!canvas || !startPanel || !startButton || !backendLabel || !perf) throw new Error('Required game DOM missing');
+if (!canvas || !startPanel || !startButton || !backendLabel || !perf) {
+  throw new Error('Required game DOM missing');
+}
+
+const debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
+if (debugEnabled) perf.classList.remove('hidden');
 
 let running = false;
 
 startButton.addEventListener('click', async () => {
   if (running) return;
   startButton.disabled = true;
-  startButton.textContent = 'ENTERING FULLSCREEN…';
+  startButton.textContent = 'ENTERING LANDSCAPE…';
+
   try {
     await enterGamePresentation();
     startButton.textContent = 'INITIALIZING…';
-    // Keep the landing shell tiny; the engine/WASM path is fetched only after the player boots.
-    backendLabel.textContent = 'LOADING MODULES';
+    backendLabel.textContent = 'LOADING RANGE';
+
     const [{ createEngine, createWorld }, { AdaptiveResolution }, { Game }, { GAME }] = await Promise.all([
       import('./game/world'),
       import('./game/performance'),
@@ -29,25 +35,32 @@ startButton.addEventListener('click', async () => {
     const hud = {
       healthFill: requireElement('#health-fill'),
       healthLabel: requireElement('#health-label'),
-      waveLabel: requireElement('#wave-label'),
+      modeLabel: requireElement('#mode-label'),
       ammoLabel: requireElement('#ammo-label'),
       mutationStrip: requireElement('#mutation-strip'),
-      upgradePanel: requireElement('#upgrade-panel'),
-      upgradeCards: requireElement('#upgrade-cards'),
       toast: requireElement('#toast'),
       hitMarker: requireElement('#hit-marker'),
       damageVignette: requireElement('#damage-vignette'),
+      loadoutPanel: requireElement('#loadout-panel'),
+      loadoutBody: requireElement('#loadout-body'),
+      partCatalog: requireElement('#part-catalog'),
+      loadoutToggle: requireElement<HTMLButtonElement>('#loadout-toggle'),
+      loadoutClose: requireElement<HTMLButtonElement>('#loadout-close'),
+      espMarker: requireElement('#esp-marker'),
+      targetNoiseButton: requireElement<HTMLButtonElement>('#target-noise'),
     };
 
-    backendLabel.textContent = 'GRAPHICS';
+    backendLabel.textContent = 'INITIALIZING RENDERER';
     const { engine, backend } = await createEngine(canvas);
-    backendLabel.textContent = `${backend.toUpperCase()} · PHYSICS`;
+    backendLabel.textContent = 'INITIALIZING WORLD';
     const { scene, physicsMode, physicsFallbackReason } = await createWorld(engine);
-    backendLabel.textContent = `${backend.toUpperCase()} · ${physicsMode.toUpperCase()}`;
-    if (physicsFallbackReason) console.info('Physics fallback reason:', physicsFallbackReason);
     const adaptive = new AdaptiveResolution(engine);
     const game = new Game(scene, canvas, hud, physicsMode);
+
+    console.info('CHEAT OR DIE runtime', { backend, physicsMode, physicsFallbackReason });
+
     running = true;
+    backendLabel.textContent = 'SYSTEM READY';
     document.body.classList.add('game-running');
     startPanel.classList.add('hidden');
     game.input.requestPointerLock();
@@ -59,12 +72,16 @@ startButton.addEventListener('click', async () => {
       const frameDt = Math.min(GAME.maxFrameDt, (now - last) / 1000);
       last = now;
       accumulator = Math.min(accumulator + frameDt, GAME.fixedStep * 4);
+
       while (accumulator >= GAME.fixedStep) {
         game.update(GAME.fixedStep);
         accumulator -= GAME.fixedStep;
       }
+
       adaptive.update(frameDt);
-      perf.textContent = `${backend.toUpperCase()} · ${physicsMode.toUpperCase()} · ${adaptive.label} · SEED ${game.seed}`;
+      if (debugEnabled) {
+        perf.textContent = `${backend.toUpperCase()} · ${physicsMode.toUpperCase()} · ${adaptive.label}`;
+      }
       scene.render();
     });
 
@@ -73,13 +90,22 @@ startButton.addEventListener('click', async () => {
     window.addEventListener('orientationchange', resize);
   } catch (error) {
     console.error(error);
-    backendLabel.textContent = 'BOOT ERROR';
+    backendLabel.textContent = 'STARTUP FAILED';
     startButton.disabled = false;
-    startButton.textContent = 'RETRY BOOT';
-    const message = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error && error.stack ? `\n${error.stack.split('\n').slice(0, 4).join('\n')}` : '';
+    startButton.textContent = 'RETRY';
+
     const body = startPanel.querySelector('p');
-    if (body) body.textContent = `Failed to initialize the combat runtime: ${message}${stack}`;
+    if (body) {
+      if (debugEnabled) {
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error && error.stack
+          ? `\n${error.stack.split('\n').slice(0, 4).join('\n')}`
+          : '';
+        body.textContent = `Startup failed: ${message}${stack}`;
+      } else {
+        body.textContent = 'The sandbox could not start. Reload the page and try again.';
+      }
+    }
   }
 });
 
@@ -89,17 +115,15 @@ function requireElement<T extends HTMLElement = HTMLElement>(selector: string): 
   return element;
 }
 
-
 async function enterGamePresentation(): Promise<void> {
   const app = requireElement<HTMLElement>('#app');
 
-  // Fullscreen is requested immediately from the boot gesture before async game loading
-  // consumes transient user activation.
+  // Keep browser chrome and accidental page gestures out of the core touch surface when supported.
   if (!document.fullscreenElement && typeof app.requestFullscreen === 'function') {
     try {
-      await app.requestFullscreen();
+      await app.requestFullscreen({ navigationUI: 'hide' });
     } catch (error) {
-      console.warn('Fullscreen request was rejected; continuing with the landscape gate.', error);
+      console.info('Fullscreen unavailable; continuing with landscape/touch containment.', error);
     }
   }
 
@@ -110,7 +134,7 @@ async function enterGamePresentation(): Promise<void> {
     try {
       await orientation.lock('landscape');
     } catch (error) {
-      console.info('Orientation lock unavailable; CSS landscape gate remains authoritative.', error);
+      console.info('Native orientation lock unavailable; CSS landscape gate remains active.', error);
     }
   }
 }

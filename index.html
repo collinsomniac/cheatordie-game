@@ -6,51 +6,122 @@
     <meta name="theme-color" content="#090b0c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>CHEAT OR DIE // Prototype</title>
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>CHEAT OR DIE // Sandbox</title>
   </head>
   <body>
     <div id="app">
-      <canvas id="game" aria-label="CHEAT OR DIE game canvas"></canvas>
+      <canvas id="game" aria-label="CHEAT OR DIE sandbox"></canvas>
+
       <div id="hud" class="hud">
         <div class="hud__top">
-          <div><strong id="wave-label">WAVE 01</strong><span id="backend-label">BOOTING</span></div>
-          <div class="hud__health"><span>CHASSIS</span><div class="meter"><i id="health-fill"></i></div><b id="health-label">100</b></div>
+          <div class="hud__mode">
+            <strong id="mode-label">SANDBOX</strong>
+            <span id="backend-label">OFFLINE</span>
+          </div>
+          <div class="hud__right">
+            <button id="loadout-toggle" class="hud-button" type="button">CHASSIS</button>
+            <div class="hud__health">
+              <span>INTEGRITY</span>
+              <div class="meter"><i id="health-fill"></i></div>
+              <b id="health-label">100</b>
+            </div>
+          </div>
         </div>
+
         <div id="crosshair" class="crosshair" aria-hidden="true"><i></i><i></i></div>
         <div id="hit-marker" class="hit-marker" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <div id="damage-vignette" class="damage-vignette" aria-hidden="true"></div>
+        <div id="esp-marker" class="esp-marker hidden" aria-hidden="true"></div>
+
         <div class="hud__bottom">
-          <div><span>CARBINE</span><strong id="ammo-label">∞</strong></div>
+          <div><span>CARBINE // TEST CONFIG</span><strong id="ammo-label">∞</strong></div>
           <div id="mutation-strip" class="mutations"></div>
         </div>
       </div>
+
       <div id="start-panel" class="panel panel--start">
-        <div class="panel__eyebrow">UNLICENSED COMBAT CHASSIS // BUILD 0.1</div>
+        <div class="panel__eyebrow">UNLICENSED COMBAT CHASSIS // SANDBOX 0.2</div>
         <h1>CHEAT<br/><em>OR</em> DIE</h1>
-        <p>A browser-native FPS where cheating is the build system. Survive waves, steal illegal firmware, mutate the same robot architecture your enemies use.</p>
+        <p>Movement and systems sandbox. Boot into a landscape combat range, test the shared robot chassis, and install illegal hardware directly.</p>
         <div class="boot-actions">
-          <button id="start-button" type="button">BOOT CHASSIS</button>
+          <button id="start-button" type="button">ENTER SANDBOX</button>
         </div>
-        <div class="controls"><b>TOUCH</b> left stick · right swipe aim · FIRE-drag · JUMP · RUN · VIEW<br/><b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/><b>DESKTOP</b> WASD · mouse · click · Space · Shift · V</div>
+        <div class="controls">
+          <b>TOUCH</b> left stick · right-side swipe aim · FIRE-drag · JUMP · RUN · VIEW<br/>
+          <b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/>
+          <b>DESKTOP</b> WASD · mouse · click · Space · Shift · V · C chassis
+        </div>
       </div>
-      <div id="upgrade-panel" class="panel panel--upgrade hidden" aria-live="polite">
-        <div class="panel__eyebrow">ILLEGAL FIRMWARE DETECTED</div>
-        <h2>CHOOSE A CHEAT</h2>
-        <div id="upgrade-cards" class="upgrade-grid"></div>
-      </div>
+
+      <section id="loadout-panel" class="loadout-panel hidden" aria-label="Chassis editor">
+        <header class="loadout-header">
+          <div>
+            <small>ILLEGAL HARDWARE LAB</small>
+            <h2>CHASSIS CONFIG</h2>
+          </div>
+          <button id="loadout-close" class="loadout-close" type="button">RETURN</button>
+        </header>
+
+        <div class="loadout-layout">
+          <div class="chassis-column">
+            <div class="chassis-map" id="loadout-body" aria-label="Robot body slots">
+              <div class="chassis-silhouette" aria-hidden="true">
+                <i class="silhouette__head"></i>
+                <i class="silhouette__torso"></i>
+                <i class="silhouette__arm silhouette__arm--l"></i>
+                <i class="silhouette__arm silhouette__arm--r"></i>
+                <i class="silhouette__leg silhouette__leg--l"></i>
+                <i class="silhouette__leg silhouette__leg--r"></i>
+              </div>
+              <button data-body-slot="head" class="slot slot--head" type="button"></button>
+              <button data-body-slot="sensor-left" class="slot slot--sensor-l" type="button"></button>
+              <button data-body-slot="sensor-right" class="slot slot--sensor-r" type="button"></button>
+              <button data-body-slot="arm-left" class="slot slot--arm-l" type="button"></button>
+              <button data-body-slot="arm-right" class="slot slot--arm-r" type="button"></button>
+              <button data-body-slot="torso" class="slot slot--torso" type="button"></button>
+              <button data-body-slot="core" class="slot slot--core" type="button"></button>
+              <button data-body-slot="leg-left" class="slot slot--leg-l" type="button"></button>
+              <button data-body-slot="leg-right" class="slot slot--leg-r" type="button"></button>
+              <button data-body-slot="utility" class="slot slot--utility" type="button"></button>
+            </div>
+
+            <div class="lab-tools">
+              <button id="target-noise" type="button">EMIT TARGET NOISE</button>
+              <p>ECHO-ESP only reveals the stationary dummy while its diagnostic noise signal is above threshold.</p>
+            </div>
+          </div>
+
+          <div class="inventory-column">
+            <div class="inventory-heading">
+              <div><small>AVAILABLE PARTS</small><strong>ONE ACTIVE LOADOUT</strong></div>
+              <p>Install anywhere a listed footprint is free. Occupied body sockets remove the whole attached part when tapped.</p>
+            </div>
+            <div id="part-catalog" class="part-catalog"></div>
+          </div>
+        </div>
+      </section>
+
       <div id="touch-controls" class="touch-controls" aria-label="Touch controls">
-        <div class="touch-stick touch-stick--move" data-touch-stick="move" aria-label="Movement joystick"><i class="touch-stick__knob"></i><span>MOVE</span></div>
+        <div class="touch-stick touch-stick--move" data-touch-stick="move" aria-label="Movement joystick">
+          <i class="touch-stick__knob"></i><span>MOVE</span>
+        </div>
         <div class="touch-look-zone" data-touch-look aria-label="Aim surface"><span>SWIPE TO AIM</span></div>
         <button class="touch-button touch-button--fire" data-touch-button="fire" type="button">FIRE</button>
         <button class="touch-button touch-button--jump" data-touch-button="jump" type="button">JUMP</button>
         <button class="touch-button touch-button--sprint" data-touch-button="sprint" type="button">RUN</button>
         <button class="touch-button touch-button--camera" data-touch-button="camera" type="button">VIEW</button>
       </div>
+
       <div id="orientation-gate" class="orientation-gate" aria-live="polite">
-        <div><strong>LANDSCAPE REQUIRED</strong><span>Rotate your device to continue.</span></div>
+        <div>
+          <strong>ROTATE TO LANDSCAPE</strong>
+          <span>CHEAT OR DIE is designed around one landscape combat view.</span>
+        </div>
       </div>
+
       <div id="toast" class="toast hidden"></div>
-      <div id="perf" class="perf"></div>
+      <div id="perf" class="perf hidden"></div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
