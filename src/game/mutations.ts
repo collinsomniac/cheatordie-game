@@ -1,57 +1,81 @@
 import type { BodySlot, ControlIntent, RobotStats } from './types';
 
-export type MutationId = 'aim-assist' | 'triggerbot' | 'speedhack' | 'bhop' | 'recoil-null' | 'overclock';
+export type MutationId =
+  | 'aim-assist'
+  | 'triggerbot'
+  | 'speedhack'
+  | 'bhop'
+  | 'recoil-null'
+  | 'overclock'
+  | 'acoustic-esp'
+  | 'wallhack-array'
+  | 'hardlock-suite';
+
+export type MutationCategory = 'sensor' | 'aim' | 'movement' | 'weapon' | 'system' | 'package';
 
 export interface MutationDefinition {
   id: MutationId;
   name: string;
   code: string;
+  icon: string;
+  category: MutationCategory;
   description: string;
-  slots: readonly BodySlot[];
+  mounts: readonly (readonly BodySlot[])[];
   stackable: boolean;
   applyStats(stats: RobotStats, stacks: number): void;
   mutateIntent?(intent: ControlIntent, moving: boolean, grounded: boolean, stacks: number): void;
 }
 
 export interface InstalledMutation {
+  instanceId: string;
   id: MutationId;
-  slot: BodySlot;
+  slots: BodySlot[];
 }
+
+const singles = (...slots: BodySlot[]): readonly (readonly BodySlot[])[] => slots.map((slot) => [slot]);
 
 export const MUTATIONS: Record<MutationId, MutationDefinition> = {
   'aim-assist': {
     id: 'aim-assist',
-    name: 'Magnetic Optics',
-    code: 'AIM_ASSIST',
-    description: 'Crosshair magnetism bends your look vector toward nearby visible targets.',
-    slots: ['head', 'sensor-left', 'sensor-right'],
+    name: 'Magnetic Optic',
+    code: 'MAG-OPTIC',
+    icon: '◉',
+    category: 'aim',
+    description: 'One-slot target magnetism. Helpful correction, not an automatic turn-and-kill system.',
+    mounts: singles('head', 'sensor-left', 'sensor-right'),
     stackable: true,
-    applyStats: (stats, stacks) => { stats.aimAssist += 0.09 * stacks; },
+    applyStats: (stats, stacks) => { stats.aimAssist += 0.075 * stacks; },
   },
   triggerbot: {
     id: 'triggerbot',
-    name: 'Deadman Trigger',
-    code: 'TRIGGERBOT',
-    description: 'The weapon fires itself when a visible hostile enters a narrow aim cone.',
-    slots: ['arm-left', 'arm-right'],
+    name: 'Trigger Servo',
+    code: 'TRIGGER',
+    icon: '⌁',
+    category: 'weapon',
+    description: 'Fires when a visible target crosses a narrow confidence cone. You still have to aim it there.',
+    mounts: singles('arm-left', 'arm-right'),
     stackable: true,
-    applyStats: (stats, stacks) => { stats.triggerAngle += 0.012 * stacks; },
+    applyStats: (stats, stacks) => { stats.triggerAngle += 0.010 * stacks; },
   },
   speedhack: {
     id: 'speedhack',
-    name: 'Clock Skew Legs',
-    code: 'SPEEDHACK',
-    description: 'Movement servos run outside certified clock tolerances.',
-    slots: ['leg-left', 'leg-right'],
+    name: 'Clock-Skew Actuator',
+    code: 'SPEED',
+    icon: '»',
+    category: 'movement',
+    description: 'One leg runs outside certified timing. Fast, but it competes directly with movement automation.',
+    mounts: singles('leg-left', 'leg-right'),
     stackable: true,
-    applyStats: (stats, stacks) => { stats.moveSpeed *= 1 + 0.16 * stacks; },
+    applyStats: (stats, stacks) => { stats.moveSpeed *= 1 + 0.14 * stacks; },
   },
   bhop: {
     id: 'bhop',
-    name: 'Momentum Exploit',
-    code: 'BHOP_MACRO',
-    description: 'Moving on the ground automatically queues a jump and preserves velocity.',
-    slots: ['leg-left', 'leg-right', 'core'],
+    name: 'Momentum Macro',
+    code: 'BHOP',
+    icon: '↟',
+    category: 'movement',
+    description: 'Automatically queues jumps while moving and retains more horizontal momentum.',
+    mounts: singles('leg-left', 'leg-right', 'core'),
     stackable: true,
     applyStats: (stats, stacks) => { stats.momentumRetention = Math.min(0.97, stats.momentumRetention + 0.09 * stacks); },
     mutateIntent: (intent, moving, grounded) => { if (moving && grounded) intent.jump = true; },
@@ -59,23 +83,64 @@ export const MUTATIONS: Record<MutationId, MutationDefinition> = {
   'recoil-null': {
     id: 'recoil-null',
     name: 'Counter-Recoil Servo',
-    code: 'RECOIL_NULL',
-    description: 'Arm servos cancel an increasing fraction of weapon kick.',
-    slots: ['arm-left', 'arm-right'],
+    code: 'RECOIL',
+    icon: '≋',
+    category: 'weapon',
+    description: 'An arm-mounted counterforce unit. Reduces kick without touching target acquisition.',
+    mounts: singles('arm-left', 'arm-right'),
     stackable: true,
-    applyStats: (stats, stacks) => { stats.recoil *= Math.max(0.12, 1 - 0.32 * stacks); },
+    applyStats: (stats, stacks) => { stats.recoil *= Math.max(0.16, 1 - 0.30 * stacks); },
   },
   overclock: {
     id: 'overclock',
     name: 'Unsafe Overclock',
     code: 'OVERCLOCK',
-    description: 'Higher fire cadence and damage in exchange for harder recoil.',
-    slots: ['core', 'utility'],
+    icon: '⚡',
+    category: 'system',
+    description: 'Pushes fire cadence and damage while increasing kick. A raw-output engine piece.',
+    mounts: singles('core', 'utility'),
     stackable: true,
     applyStats: (stats, stacks) => {
-      stats.fireInterval *= Math.max(0.55, 1 - 0.1 * stacks);
-      stats.damage *= 1 + 0.09 * stacks;
+      stats.fireInterval *= Math.max(0.58, 1 - 0.1 * stacks);
+      stats.damage *= 1 + 0.08 * stacks;
       stats.recoil *= 1 + 0.1 * stacks;
+    },
+  },
+  'acoustic-esp': {
+    id: 'acoustic-esp',
+    name: 'Acoustic Translator',
+    code: 'ECHO-ESP',
+    icon: '≈',
+    category: 'sensor',
+    description: 'One-slot situational ESP: translates loud movement or firing signatures into visual target data.',
+    mounts: singles('sensor-left', 'sensor-right'),
+    stackable: false,
+    applyStats: (stats) => { stats.wallSense = Math.max(stats.wallSense, 1) as 1 | 2; },
+  },
+  'wallhack-array': {
+    id: 'wallhack-array',
+    name: 'Panoptic Array',
+    code: 'XRAY',
+    icon: '◇',
+    category: 'sensor',
+    description: 'Permanent through-cover target telemetry, balanced by consuming both sensor sockets at once.',
+    mounts: [['sensor-left', 'sensor-right']],
+    stackable: false,
+    applyStats: (stats) => { stats.wallSense = 2; },
+  },
+  'hardlock-suite': {
+    id: 'hardlock-suite',
+    name: 'Hardlock Suite',
+    code: 'HARDLOCK',
+    icon: '⊕',
+    category: 'package',
+    description: 'A powerful prebuilt aim engine that occupies the head, both sensors, and both arms. Strong correction and auto-fire, but it dominates the chassis.',
+    mounts: [['head', 'sensor-left', 'sensor-right', 'arm-left', 'arm-right']],
+    stackable: false,
+    applyStats: (stats) => {
+      stats.aimAssist += 0.34;
+      stats.triggerAngle += 0.021;
+      stats.recoil *= 0.62;
     },
   },
 };
@@ -83,25 +148,40 @@ export const MUTATIONS: Record<MutationId, MutationDefinition> = {
 export class MutationLoadout {
   private readonly installed: InstalledMutation[] = [];
   private _revision = 0;
+  private nextInstance = 1;
 
   get revision(): number {
     return this._revision;
   }
 
-  add(id: MutationId): BodySlot | null {
+  install(id: MutationId): InstalledMutation | null {
     const definition = MUTATIONS[id];
     if (!definition.stackable && this.has(id)) return null;
-    const slot = this.availableSlot(id);
-    if (!slot) return null;
-    this.installed.push({ id, slot });
+    const slots = this.availablePattern(id);
+    if (!slots) return null;
+
+    const item: InstalledMutation = {
+      instanceId: `${id}-${this.nextInstance++}`,
+      id,
+      slots: [...slots],
+    };
+    this.installed.push(item);
     this._revision += 1;
-    return slot;
+    return item;
   }
 
-  availableSlot(id: MutationId): BodySlot | null {
-    const occupied = new Set(this.installed.map((item) => item.slot));
-    for (const slot of MUTATIONS[id].slots) {
-      if (!occupied.has(slot)) return slot;
+  uninstall(instanceId: string): boolean {
+    const index = this.installed.findIndex((item) => item.instanceId === instanceId);
+    if (index < 0) return false;
+    this.installed.splice(index, 1);
+    this._revision += 1;
+    return true;
+  }
+
+  availablePattern(id: MutationId): readonly BodySlot[] | null {
+    const occupied = new Set(this.installed.flatMap((item) => item.slots));
+    for (const pattern of MUTATIONS[id].mounts) {
+      if (pattern.every((slot) => !occupied.has(slot))) return pattern;
     }
     return null;
   }
@@ -116,8 +196,12 @@ export class MutationLoadout {
     return count;
   }
 
-  slotsFor(id: MutationId): BodySlot[] {
-    return this.installed.filter((item) => item.id === id).map((item) => item.slot);
+  instanceAt(slot: BodySlot): InstalledMutation | null {
+    return this.installed.find((item) => item.slots.includes(slot)) ?? null;
+  }
+
+  instances(): readonly InstalledMutation[] {
+    return this.installed;
   }
 
   entries(): Array<{ definition: MutationDefinition; stacks: number; slots: BodySlot[] }> {
@@ -125,12 +209,8 @@ export class MutationLoadout {
     return [...ids].map((id) => ({
       definition: MUTATIONS[id],
       stacks: this.count(id),
-      slots: this.slotsFor(id),
+      slots: this.installed.filter((item) => item.id === id).flatMap((item) => item.slots),
     }));
-  }
-
-  occupiedSlots(): readonly InstalledMutation[] {
-    return this.installed;
   }
 
   applyStats(base: RobotStats): RobotStats {
@@ -144,13 +224,4 @@ export class MutationLoadout {
       definition.mutateIntent?.(intent, moving, grounded, stacks);
     }
   }
-}
-
-export function drawMutationChoices(count: number, random: () => number = Math.random): MutationDefinition[] {
-  const copy = [...Object.values(MUTATIONS)];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j]!, copy[i]!];
-  }
-  return copy.slice(0, count);
 }

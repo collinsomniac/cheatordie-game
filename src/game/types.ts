@@ -39,6 +39,7 @@ export interface RobotStats {
   aimAssist: number;
   triggerAngle: number;
   momentumRetention: number;
+  wallSense: 0 | 1 | 2;
 }
 
 export interface TargetSnapshot {
