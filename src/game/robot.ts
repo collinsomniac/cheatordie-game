@@ -9,7 +9,7 @@ import { Scene } from '@babylonjs/core/scene';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { BodySlot, CameraMode, ControlIntent, RobotController, RobotFaction, RobotStats, TargetSnapshot } from './types';
-import { MutationLoadout, type MutationId } from './mutations';
+import { MutationLoadout, type InstalledMutation, type MutationId } from './mutations';
 import { GAME } from './config';
 import type { PhysicsMode } from './world';
 
@@ -27,6 +27,7 @@ const BASE_STATS: RobotStats = {
   aimAssist: 0,
   triggerAngle: 0,
   momentumRetention: 0.72,
+  wallSense: 0,
 };
 
 interface RobotPalette {
@@ -88,6 +89,7 @@ export class RobotEntity {
   readonly id: string;
   readonly faction: RobotFaction;
   readonly meshParts: AbstractMesh[] = [];
+  private readonly mutationVisuals: AbstractMesh[] = [];
   readonly character: PhysicsCharacterController | null;
   private readonly kinematicCollider: Mesh | null;
   health = 100;
@@ -162,13 +164,17 @@ export class RobotEntity {
     };
   }
 
-  addMutation(id: MutationId): BodySlot | null {
-    const slot = this.loadout.add(id);
-    if (!slot) return null;
-    this.cachedStats = this.loadout.applyStats(BASE_STATS);
-    const stack = this.loadout.count(id);
-    this.attachMutationVisual(id, slot, stack);
-    return slot;
+  addMutation(id: MutationId): InstalledMutation | null {
+    const installed = this.loadout.install(id);
+    if (!installed) return null;
+    this.refreshMutationState();
+    return installed;
+  }
+
+  removeMutation(instanceId: string): boolean {
+    if (!this.loadout.uninstall(instanceId)) return false;
+    this.refreshMutationState();
+    return true;
   }
 
   update(dt: number): void {
@@ -250,6 +256,7 @@ export class RobotEntity {
     position: Vector3,
     material: StandardMaterial,
     pickable = true,
+    mutationVisual = false,
   ): Mesh {
     const mesh = MeshBuilder.CreateBox(`${this.id}-${name}`, { width: size.x, height: size.y, depth: size.z }, this.scene);
     mesh.parent = this.root;
@@ -258,75 +265,72 @@ export class RobotEntity {
     mesh.isPickable = pickable;
     if (pickable) mesh.metadata = { robotId: this.id };
     this.meshParts.push(mesh);
+    if (mutationVisual) this.mutationVisuals.push(mesh);
     return mesh;
+  }
+
+  private refreshMutationState(): void {
+    this.cachedStats = this.loadout.applyStats(BASE_STATS);
+
+    for (const mesh of this.mutationVisuals.splice(0)) {
+      const index = this.meshParts.indexOf(mesh);
+      if (index >= 0) this.meshParts.splice(index, 1);
+      mesh.dispose(false, true);
+    }
+
+    const stackById = new Map<MutationId, number>();
+    for (const installed of this.loadout.instances()) {
+      const stack = (stackById.get(installed.id) ?? 0) + 1;
+      stackById.set(installed.id, stack);
+      for (const slot of installed.slots) this.attachMutationVisual(installed.id, slot, stack);
+    }
   }
 
   private attachMutationVisual(id: MutationId, slot: BodySlot, stack: number): void {
     const layer = (stack - 1) * 0.035;
     const side = slot.endsWith('left') ? -1 : slot.endsWith('right') ? 1 : 0;
+    const glowBox = (name: string, size: Vector3, position: Vector3): void => {
+      this.addBox(name, size, position, this.palette.glow, false, true);
+    };
+    const darkBox = (name: string, size: Vector3, position: Vector3): void => {
+      this.addBox(name, size, position, this.palette.dark, false, true);
+    };
 
     switch (id) {
       case 'aim-assist':
-        if (slot === 'head') {
-          this.addBox(`aim-head-${stack}`, new Vector3(0.24, 0.10, 0.22), new Vector3(0, 1.92, 0.03), this.palette.glow, false);
-        } else {
-          this.addBox(
-            `aim-${slot}-${stack}`,
-            new Vector3(0.10, 0.15, 0.24),
-            new Vector3(side * 0.36, 1.72 + layer, 0.03),
-            this.palette.glow,
-            false,
-          );
-        }
+        if (slot === 'head') glowBox(`aim-head-${stack}`, new Vector3(0.24, 0.10, 0.22), new Vector3(0, 1.92, 0.03));
+        else glowBox(`aim-${slot}-${stack}`, new Vector3(0.10, 0.15, 0.24), new Vector3(side * 0.36, 1.72 + layer, 0.03));
         break;
       case 'triggerbot':
-        this.addBox(
-          `trigger-${slot}-${stack}`,
-          new Vector3(0.13, 0.13, 0.21),
-          new Vector3(side * 0.66, 1.18 + layer, 0.34),
-          this.palette.glow,
-          false,
-        );
+        glowBox(`trigger-${slot}-${stack}`, new Vector3(0.13, 0.13, 0.21), new Vector3(side * 0.66, 1.18 + layer, 0.34));
         break;
       case 'speedhack':
-        this.addBox(
-          `speed-${slot}-${stack}`,
-          new Vector3(0.09, 0.38, 0.34),
-          new Vector3(side * 0.39, 0.31, -0.03),
-          this.palette.glow,
-          false,
-        );
+        glowBox(`speed-${slot}-${stack}`, new Vector3(0.09, 0.38, 0.34), new Vector3(side * 0.39, 0.31, -0.03));
         break;
       case 'bhop':
-        if (slot === 'core') {
-          this.addBox(`bhop-core-${stack}`, new Vector3(0.38, 0.16, 0.12), new Vector3(0, 0.82, -0.27), this.palette.glow, false);
-        } else {
-          this.addBox(
-            `bhop-${slot}-${stack}`,
-            new Vector3(0.31, 0.08, 0.42),
-            new Vector3(side * 0.23, 0.02 + layer, 0.06),
-            this.palette.dark,
-            false,
-          );
-        }
+        if (slot === 'core') glowBox(`bhop-core-${stack}`, new Vector3(0.38, 0.16, 0.12), new Vector3(0, 0.82, -0.27));
+        else darkBox(`bhop-${slot}-${stack}`, new Vector3(0.31, 0.08, 0.42), new Vector3(side * 0.23, 0.02 + layer, 0.06));
         break;
       case 'recoil-null':
-        this.addBox(
-          `counterweight-${slot}-${stack}`,
-          new Vector3(0.18, 0.17, 0.31),
-          new Vector3(side * 0.64, 1.29 + layer, -0.13),
-          this.palette.dark,
-          false,
-        );
+        darkBox(`counterweight-${slot}-${stack}`, new Vector3(0.18, 0.17, 0.31), new Vector3(side * 0.64, 1.29 + layer, -0.13));
         break;
       case 'overclock':
-        this.addBox(
+        glowBox(
           `overclock-${slot}-${stack}`,
           slot === 'core' ? new Vector3(0.46, 0.25, 0.12) : new Vector3(0.22, 0.34, 0.14),
           slot === 'core' ? new Vector3(0, 1.10, -0.28) : new Vector3(-0.45, 1.25, -0.20),
-          this.palette.glow,
-          false,
         );
+        break;
+      case 'acoustic-esp':
+        glowBox(`echo-${slot}`, new Vector3(0.11, 0.20, 0.18), new Vector3(side * 0.37, 1.72, -0.04));
+        break;
+      case 'wallhack-array':
+        glowBox(`xray-${slot}`, new Vector3(0.16, 0.24, 0.20), new Vector3(side * 0.39, 1.73, -0.02));
+        break;
+      case 'hardlock-suite':
+        if (slot === 'head') glowBox('hardlock-head', new Vector3(0.36, 0.13, 0.27), new Vector3(0, 1.94, 0.01));
+        else if (slot.startsWith('sensor')) glowBox(`hardlock-${slot}`, new Vector3(0.15, 0.24, 0.24), new Vector3(side * 0.39, 1.73, 0.00));
+        else if (slot.startsWith('arm')) glowBox(`hardlock-${slot}`, new Vector3(0.17, 0.34, 0.18), new Vector3(side * 0.64, 1.16, 0.18));
         break;
     }
   }
