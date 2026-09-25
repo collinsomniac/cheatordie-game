@@ -1,46 +1,49 @@
 # Architecture
 
-## Non-negotiable design rule: player/bot parity
+## Entity parity
 
-Every combatant is a `RobotEntity`. A robot owns its chassis representation, Havok character controller, stats, health, weapon behavior, mutation loadout, and simulation state. The only intentional distinction between a player and an enemy is the source of `ControlIntent`.
+Every combatant is a RobotEntity. Player, stationary sandbox target, future AI enemies, replay ghosts, automation agents, and eventual network players should differ primarily by the RobotController producing ControlIntent.
 
-```text
-PlayerController ─┐
-                  ├─> ControlIntent ─> mutation pipeline ─> RobotEntity ─> Havok/world
-BotController ────┘
-```
+Touch / Mouse / Gamepad -> PlayerController -> ControlIntent -> RobotEntity
+Static target -> StaticBotController -> ControlIntent -> RobotEntity
+Future AI -> BotController -> ControlIntent -> RobotEntity
 
-This boundary is deliberately small. Later controllers may include replay ghosts, network input, aim-assistance agents, higher-level tactical AI, or full automation without changing movement/weapon code.
+Movement, health, weapon execution, physics, sensors, and installed hardware remain shared.
 
-## Mutation pipeline
+## Presentation and simulation
 
-Mutations currently modify stats or intent, but the interface is intended to expand into explicit stages:
+The simulation runs at a fixed 60 Hz accumulator while rendering is independent. The chassis editor pauses control without replacing the world. Touch, gamepad, and desktop merge into one intent object.
 
-```text
-sensors -> target model -> intent -> movement/aim -> weapon -> physics
-```
+## Physics as a backend
 
-Cheats should intercept or replace one of those stages rather than behave only like ordinary RPG stat boosts. The first prototype includes aim assist, triggerbot, speedhack, bunny-hop automation, recoil cancellation, and overclocking because they exercise distinct parts of the pipeline.
+- WebGPU preferred; WebGL2 falls back automatically.
+- iOS currently defaults to Babylon native kinematic collision.
+- Havok is lazy-loaded only when selected and can fall back when initialization fails.
 
-## Rendering
+This prevents one WASM runtime from being a boot dependency.
 
-WebGPU is preferred. `?backend=webgl` forces the WebGL2 backend for regression testing. The renderer intentionally avoids device-pixel-ratio rendering and instead uses a dynamic internal scale. This is both a mobile performance strategy and part of the aesthetic: lower internal resolution should look intentional rather than like a degraded mode.
+## Sandbox
 
-Current prototype art is built from primitives with shared/simple materials. The production asset path should use GLB/glTF, KTX2/Basis textures, meshopt compression, LODs, and instancing/thin instances for repeated geometry.
+The default runtime is deliberately small: Dustlab + Player RobotEntity + stationary Target RobotEntity + weapon/viewmodel + chassis lab + diagnostics. There is no wave loop running underneath it.
 
-## Physics
+## Hardware / loadout
 
-Havok WASM is initialized once. Static arena geometry uses physics aggregates; all robots use Babylon's Havok character controller. Keep the first performance target single-threaded so classic GitHub Pages remains a no-special-server deployment.
+The ten sockets are head, left/right sensors, left/right arms, torso, core, left/right legs, and utility.
 
-## Simulation
+A MutationDefinition declares one or more complete legal mount patterns. An installed instance owns every socket in the chosen pattern. A large package can consume head + both sensors + both arms while a cheap optic consumes one sensor. Uninstalling any occupied socket ejects the entire instance.
 
-Gameplay steps at 60 Hz using an accumulator; rendering is independent. Expensive AI should later be scheduled at lower frequencies than locomotion/physics where possible. A future Director layer should control encounter pressure and wave composition separately from individual bot decision-making.
+Balancing therefore has three independent axes: strength, footprint/opportunity cost, and compatibility.
 
-## Performance budget principles
+## Cheat pipeline
 
-Prefer fewer pixels before fewer triangles. Avoid full-device-DPR rendering on phones. Keep dynamic light/shadow counts low, reduce transparency/overdraw, pool short-lived effects, instance repeated meshes, compress GPU textures, bake static work, and measure on-device before adding visual cost.
+Long-term direction: world truth -> sensors -> target model/memory -> intent assistance -> movement/aim -> weapon policy -> physics.
 
+Current sensor baseline respects line of sight. ECHO-ESP adds conditional through-cover telemetry while noisy; XRAY adds persistent telemetry. HARDLOCK improves visible-target correction/trigger behavior but does not secretly grant wall sensing.
 
-## Body-slot occupancy
+## Assets
 
-The ten baseline body sockets are now enforced by `MutationLoadout`. Each installed mutation instance occupies exactly one compatible physical socket, so arm cheats compete with other arm cheats, leg cheats compete with movement hardware, and core/utility hardware competes for limited space. Upgrade offers are filtered to mutations that can actually mount. Replacement/swapping UI is intentionally deferred; once all compatible sockets are saturated, the run continues without another install until replacement mechanics exist.
+Current Dustlab and robot hardware are primitives because level proportions are still moving. Authored assets should be owned or clearly licensed GLB/glTF, then optionally meshopt/KTX2 processed with explicit collision proxies and LODs.
+
+## CI contract
+
+A build is not valid merely because TypeScript/Vite compile. CI boots production in Chromium and verifies SYSTEM READY, kinematic desktop boot, iPhone-like mobile boot, visible touch controls, opening the chassis editor, rendering parts, installing hardware into sockets, and sandbox diagnostics.

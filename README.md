@@ -1,42 +1,55 @@
 # CHEAT OR DIE
 
-A browser-native roguelite FPS prototype where **cheats are the build system**. The player and enemies are the same modular robot entity; what changes is who/what supplies its control intent and which illegal firmware mutations are installed.
+A browser-native FPS/roguelite prototype where cheats are physical build parts. Player, target dummies, and future enemies share the same modular RobotEntity; controllers only supply intent.
 
-## Stack
+Live sandbox: https://collinsomniac.github.io/cheatordie-game/
 
-- Babylon.js 9 + WebGPU (WebGL2 fallback)
-- TypeScript + Vite
-- Havok Physics via WebAssembly
-- Static deployment through GitHub Pages
-- Procedural prototype assets: no external asset pipeline is required to run the current build
+## Current prototype
 
-## Run locally
+The default build is SANDBOX 0.2, not the final roguelite loop:
 
-```bash
-npm install
-npm run dev
-```
-
-Open the shown local URL. For forced WebGL2 debugging, append `?backend=webgl`.
+- original low-poly Dustlab test map built around long/mid/short/tunnel FPS routing
+- one stationary shared-entity target dummy that automatically resets after a kill
+- landscape-first mobile presentation with fullscreen/orientation requests
+- left virtual movement stick + right-side swipe look + fire-drag aiming
+- gamepad and desktop input through the same ControlIntent path
+- first/third-person cameras and a primitive carbine viewmodel
+- anatomical ten-socket chassis editor available at any time
+- multi-slot cheat footprints and physical hardware visualization
+- conditional acoustic ESP and permanent two-sensor wall telemetry
+- WebGPU preferred, WebGL2 automatic fallback
+- iOS defaults to native kinematic collision; Havok WASM remains optional/diagnostic
+- adaptive internal resolution and browser runtime smoke testing
 
 ## Controls
 
-**Gamepad:** left stick move, right stick aim, RT fire, A jump, L3 sprint, Y switch first/third person.
+Touch: landscape only. Left stick moves. Drag the right side to look. FIRE can be held and dragged to aim simultaneously. JUMP, RUN, and VIEW are separate low-opacity buttons. Strong forward stick input also auto-sprints.
 
-**Desktop:** WASD, mouse, left click, Space, Shift, V.
+Gamepad: left stick move, right stick aim, RT fire, A jump, L3 sprint, Y camera.
 
-The first mobile development target is a standard Bluetooth/USB-C gamepad on iPhone. Touch controls come after the combat feel stabilizes.
+Desktop: WASD, mouse, left click, Space, Shift, V. Press C or Tab for the chassis editor.
 
-## Architecture
+## Chassis lab
 
-The central invariant is **entity parity**. `RobotEntity` contains the body, physics, weapon, health, mutation loadout, and movement implementation. Player and enemy behavior enter through the same `RobotController -> ControlIntent` boundary. That keeps future bot takeover, assistance, replay, multiplayer, and cheat/mutation systems from forking the gameplay code.
+The editor has one active loadout. The left side maps the ten body sockets; the right side is the part inventory. A part declares one or more legal mount footprints rather than merely a list of interchangeable slots.
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md), [`docs/RESEARCH.md`](docs/RESEARCH.md), [`docs/INSPIRATION.md`](docs/INSPIRATION.md), [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/PLAYTEST.md`](docs/PLAYTEST.md), and [`docs/STATUS.md`](docs/STATUS.md).
+Examples: MAG-OPTIC uses one head/sensor slot; ECHO-ESP uses one sensor conditionally; XRAY uses both sensors permanently; HARDLOCK consumes head + both sensors + both arms.
 
-## GitHub Pages
+Tap an occupied socket to eject the entire part occupying it.
 
-The repository includes an Actions workflow that builds Vite and publishes `dist/`. The Vite base path is pinned to `/cheatordie-game/` for project Pages hosting.
+## Developer diagnostics
 
-Pages is enabled and deployment is handled by GitHub Actions. The current build is published at **https://collinsomniac.github.io/cheatordie-game/**.
+- ?debug=1 exposes renderer/physics/performance information
+- ?backend=webgl or ?backend=webgpu force graphics
+- ?physics=kinematic or ?physics=havok force physics
+- ?compat=1 enables Babylon WebGPU compatibility mode
 
-Useful regression switches: `?backend=webgl` forces WebGL2; `?backend=webgpu` forces WebGPU (and surfaces initialization failures instead of falling back); `?physics=kinematic` bypasses Havok; `?physics=havok` forces Havok; `?compat=1` keeps Babylon's WebGPU compatibility mode enabled; `?seed=12345` fixes the run seed for comparisons. Boot failures also expose a **SAFE MODE** button that reloads with WebGL2 + kinematic physics.
+Normal players should not need these; fallback is automatic.
+
+## Maintained docs
+
+- docs/STATUS.md — current implementation, debt, next priorities
+- docs/ARCHITECTURE.md — stable system boundaries
+- docs/DESIGN.md — current design rationale and research
+- docs/PERFORMANCE.md — iPhone/browser performance contract
+- docs/PLAYTEST.md — repeatable sandbox test procedure

@@ -1,74 +1,36 @@
-# Playtest protocol
+# Sandbox playtest
 
-Use this for the first iPhone/gamepad sessions so changes are comparable instead of relying on memory.
+## Mobile boot
 
-## Device record
+1. Rotate to landscape when prompted.
+2. Tap ENTER SANDBOX.
+3. Confirm fullscreen is requested when supported and normal page scroll/zoom gestures do not interfere.
+4. Confirm MOVE, FIRE, JUMP, RUN, VIEW and the right-side swipe region are comfortably reachable.
 
-Record:
+## Movement
 
-- iPhone / iOS version
-- Safari or installed web app
-- controller model and connection method
-- WebGPU or forced WebGL2
-- displayed FPS and internal resolution percentage
-- run seed shown in the performance label
-- orientation
-- approximate session length before thermal slowdown, if any
+Before installing hardware, test slow stick movement, strong-forward auto-sprint, hard reversals, diagonal sprint, jump while moving, manual bunny-hop timing, long-lane strafing, short/catwalk routing, and tunnel routing.
 
-## Five-minute feel test
+Report dead zone, acceleration/stopping, max speed, air control, jump height, and auto-sprint threshold.
 
-1. Boot into wave 1 and do not pick up cheats mentally yet: judge the ordinary shooter.
-2. Strafe around cover, reverse direction repeatedly, jump while moving, sprint diagonally, and track a bot with the right stick.
-3. Toggle third person and check whether robot motion corresponds cleanly to input.
-4. Fire continuously while tracking and note whether recoil feels readable or merely annoying.
-5. Complete at least three waves and deliberately select mutations that affect different stages (for example speedhack, aim assist, recoil null).
-6. Look at mutated enemies in third person / during combat and check whether their hardware reads before you know the loadout.
+## Aim
 
-## Report on 1-5 scales
+Test 180 turns, tiny target corrections, tracking while strafing, holding FIRE and dragging the same thumb, and target reacquisition after running a route.
 
-- left-stick acceleration / stopping
-- right-stick precision
-- right-stick maximum turn speed
-- aim response latency
-- recoil readability
-- movement weight
-- jump usefulness
-- arena readability
-- enemy readability
-- baseline difficulty
-- cheat impact
-- upgrade decision interest
-- visual clarity
-- frame consistency
+Report horizontal/vertical sensitivity, perceived latency, fire-drag comfort, button occlusion, and accidental browser gestures.
 
-## Performance stress
+## Chassis lab
 
-Stay alive through the largest reachable wave and watch the FPS/resolution display.
+- install MAG-OPTIC then eject it via an occupied body socket
+- install ECHO-ESP and press EMIT TARGET NOISE
+- install XRAY and compare persistent telemetry
+- free the required sockets and install HARDLOCK; verify all five sockets occupy
+- confirm blocked catalog entries communicate incompatibility
 
-A useful report looks like:
+## Environment
 
-```text
-iPhone:
-iOS:
-controller:
-backend:
-wave:
-FPS range:
-render scale range:
-thermal/session time:
-stutters:
-visual bugs:
-input bugs:
-favorite mutation:
-least useful mutation:
-one thing that felt great:
-one thing that felt bad:
-```
+Evaluate long sightline, mid doorway/cover, short elevated route, tunnel route, route-flow enjoyment, collision snagging, ramps, corners, camera clipping, and map scale.
 
-## Useful URL switches
+## Performance report
 
-- `?backend=webgl` — force WebGL2 for backend comparison.
-- `?compat=1` — keep Babylon WebGPU compatibility mode enabled instead of the faster render-bundle path.
-- `?seed=12345` — reproduce the same upgrade sequence. Each bot gets a deterministic per-wave/per-index random stream as well, so AI randomness is isolated from upgrade generation; exact bot motion still depends on the player's actions and resulting simulation state. Keep the seed fixed when comparing movement/AI/rendering changes.
-
-Do not change both switches at once when isolating a regression.
+If useful add ?debug=1 and report: device, iOS, browser/PWA, graphics/physics, FPS/render scale, session length, thermal behavior, movement, aim, fire-drag, layout conflicts, Dustlab collision problems, loadout UI, favorite/least useful part, and bugs.
