@@ -2,7 +2,7 @@
 
 ## Mobile controls
 
-The touch scheme follows a well-proven mobile-FPS pattern: fixed left movement joystick, relative swipe on the right half for look, action buttons layered over that region, FIRE drag-to-aim, strong-forward auto-sprint, landscape-only gameplay, and fullscreen/orientation requests from the boot gesture.
+The touch scheme follows a mobile-FPS gesture model rather than literal twin fixed joysticks: the left half is a floating movement region whose first touch becomes the temporary joystick origin; the right half is relative swipe-look. A quick stationary tap on the right look surface queues one hip-fire shot, while meaningful dragging only rotates the camera. The dedicated FIRE control remains hold-to-fire and can itself be dragged while held for continuous fire + aim correction. Strong-forward movement auto-sprints. Gameplay is landscape-only.
 
 Call of Duty: Mobile documents left-stick movement, right-side drag aiming, HUD placement/size/opacity controls, sensitivity, fixed joystick/fire options, and joystick sprint. Those are references, not a UI to clone.
 
@@ -10,7 +10,7 @@ Sources:
 - https://blog.activision.com/call-of-duty/2019-10/Getting-a-Grip-on-the-Call-of-Duty-Mobile-Controls
 - https://blog.activision.com/call-of-duty/2019-09/Call-of-Duty-Mobile-Boot-Camp-Part-1-Getting-Started-in-the-Game
 
-Default controls should feel good before a full HUD editor exists. Later customization can add sensitivity, button position/size/opacity, left-handed layouts, and gyro.
+The current HUD editor lets touch users unlock FIRE/JUMP/RUN/VIEW, drag them anywhere inside the visual viewport, then lock/save their normalized positions to local storage. Reset restores defaults. Later customization can add size, opacity, sensitivity profiles, left-handed presets, and gyro.
 
 ## Dustlab instead of Dust II
 
@@ -49,3 +49,20 @@ A simple/common part should remain potentially useful late if a build engine is 
 ## Sandbox before roguelite
 
 The development loop is now: boot -> move/aim/shoot -> open chassis -> install/eject hardware -> test against one target -> trigger diagnostics. Roguelite progression returns only after this surface is intrinsically fun.
+
+
+## iPhone fullscreen and viewport contract
+
+Safari 27 on iPhone still does not provide the standard interactive element Fullscreen API for arbitrary web content. The normal browser-tab build therefore cannot programmatically remove the omnibar. CHEAT OR DIE now ships a web-app manifest with fullscreen/standalone display requests and landscape orientation; the practical iPhone route to an app-style chrome-free window is **Share -> Add to Home Screen**, then launch from the Home Screen icon.
+
+The running page sizes the entire game shell from `window.visualViewport` rather than assuming CSS `100vh` equals the visible region. The canvas, HUD, touch surfaces and menus are children of that single fitted shell. CI asserts that the app rectangle matches the visual viewport and that default touch controls remain fully inside it.
+
+Safari still has touch-action edge cases for double-tap zoom on absolutely positioned controls, so the gameplay touch surface also uses active non-passive touch listeners to prevent Safari page gestures. Menus remain outside that suppression boundary.
+
+## Damage layers
+
+Every robot now starts with 100 shield + 100 health.
+
+Shield is an ablative hit layer, not ordinary extra HP: when shield is above zero, the complete incoming hit is resolved against shield and **never overflows into health**. If 1 shield remains and a 1000-damage hit lands, the result is 1 shield damage, shield broken, 100 health unchanged. Only a later hit can damage health.
+
+Damage numbers report actual damage consumed by the layer: shield numbers are blue; health numbers are red. This rule creates room for future shield break/recharge/bypass mechanics without quietly changing the meaning of health.

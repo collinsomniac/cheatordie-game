@@ -4,12 +4,13 @@
 
 1. Rotate to landscape when prompted.
 2. Tap ENTER SANDBOX.
-3. Confirm fullscreen is requested when supported and normal page scroll/zoom gestures do not interfere.
-4. Confirm MOVE, FIRE, JUMP, RUN, VIEW and the right-side swipe region are comfortably reachable.
+3. In ordinary Safari, confirm the game exactly fits the visible browser content rectangle without cropping. Then use Share -> Add to Home Screen and compare the installed-app presentation.
+4. Confirm rapid taps do not trigger Safari double-tap zoom, selection, callouts, or page movement.
+5. Confirm FIRE, JUMP, RUN, VIEW and both gesture regions are completely on-screen.
 
 ## Movement
 
-Before installing hardware, test slow stick movement, strong-forward auto-sprint, hard reversals, diagonal sprint, jump while moving, manual bunny-hop timing, long-lane strafing, short/catwalk routing, and tunnel routing.
+Before installing hardware, touch several different points in the left half and verify each becomes the temporary movement origin. Test slow movement, strong-forward auto-sprint, hard reversals, diagonal sprint, jump while moving, manual bunny-hop timing, long-lane strafing, short/catwalk routing, and tunnel routing.
 
 Report dead zone, acceleration/stopping, max speed, air control, jump height, and auto-sprint threshold.
 
@@ -17,7 +18,7 @@ Desktop note: Pointer Lock now starts only when the canvas is clicked; boot and 
 
 ## Aim
 
-Test 180 turns, tiny target corrections, tracking while strafing, holding FIRE and dragging the same thumb, and target reacquisition after running a route.
+Test 180 turns, tiny target corrections, tracking while strafing, a quick stationary right-side tap for one shot, a right-side drag that does not fire, holding FIRE and dragging the same thumb, and target reacquisition after running a route.
 
 Report horizontal/vertical sensitivity, perceived latency, fire-drag comfort, button occlusion, and accidental browser gestures.
 
@@ -36,3 +37,12 @@ Evaluate long sightline, mid doorway/cover, short elevated route, tunnel route, 
 ## Performance report
 
 If useful add ?debug=1 and report: device, iOS, browser/PWA, graphics/physics, FPS/render scale, session length, thermal behavior, movement, aim, fire-drag, layout conflicts, Dustlab collision problems, loadout UI, favorite/least useful part, and bugs.
+
+
+## HUD placement
+
+Tap EDIT HUD, drag FIRE/JUMP/RUN/VIEW into comfortable positions, then tap LOCK HUD. Reload and confirm positions persist. Test RESET. Controls should never be draggable outside the fitted game viewport.
+
+## Shields and damage numbers
+
+The target starts at 100 shield / 100 health. With the current 22-damage carbine, verify shield damage numbers are blue and health numbers red. The fifth shield hit should consume only the remaining shield amount and must not overflow into health; the next shot begins health damage.

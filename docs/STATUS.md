@@ -10,7 +10,7 @@ Default prototype is SANDBOX 0.2, replacing the earlier wave-loop test.
 
 Implemented:
 - landscape-first mobile presentation with fullscreen/orientation requests and portrait rotation gate
-- left movement joystick + right swipe aim + fire-drag
+- floating left movement region + right swipe aim + tap-right single fire + hold/drag FIRE
 - desktop/gamepad parity through one input pipeline
 - original Dustlab low-poly FPS blockout
 - one stationary shared-entity target with automatic reset
@@ -24,7 +24,12 @@ Implemented:
 - target-noise diagnostic pulse
 - WebGPU/WebGL fallback and iOS kinematic/Havok separation
 - adaptive render resolution
-- browser smoke test for boot/mobile/editor/install diagnostics
+- draggable/savable touch HUD layout with EDIT HUD / LOCK HUD / RESET
+- visualViewport-sized game shell plus installable fullscreen/standalone web-app manifest
+- active iOS gesture suppression on gameplay controls to avoid double-tap zoom/text selection
+- 100 shield + 100 health on all robots, with shield-breaking hits consuming all overflow
+- projected blue/red damage numbers for shield/health damage
+- browser smoke test for boot/mobile/editor/install diagnostics, viewport fit, control bounds, and vitals
 
 ## Intentional limitations
 
@@ -35,14 +40,14 @@ Implemented:
 - no active combat AI in sandbox
 - ESP is simple screen-space telemetry rather than final silhouettes
 - simple noise simulation
-- no control-layout editor yet
-- fullscreen/orientation requests remain browser-capability dependent, but portrait gameplay is blocked by the CSS gate
-- no PWA/offline cache yet
+- HUD editor currently moves controls but does not yet resize/change opacity
+- ordinary iPhone Safari still cannot programmatically enter interactive fullscreen; Home Screen installation is the expected chrome-free route
+- manifest/installability exists, but no offline service-worker cache yet
 - CI runtime smoke is WebGL2/kinematic; WebGPU still needs real-device validation
 
 ## Next priorities
 
-1. Real iPhone playtest of landscape, swipe-look, fire-drag, Dustlab collision and movement.
+1. Real iPhone playtest of visual-viewport fit, Home Screen launch, floating movement, tap-fire, fire-drag and editable HUD.
 2. Tune movement/FOV/recoil/viewmodel.
 3. Extract WeaponDefinition / WeaponState before multiple weapons.
 4. Refine sensor semantics and sensor-to-aim composition.
