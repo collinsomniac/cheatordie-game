@@ -7,9 +7,10 @@ const canvas = document.querySelector<HTMLCanvasElement>('#game');
 const startPanel = document.querySelector<HTMLElement>('#start-panel');
 const startButton = document.querySelector<HTMLButtonElement>('#start-button');
 const backendLabel = document.querySelector<HTMLElement>('#backend-label');
+const bootStatus = document.querySelector<HTMLElement>('#boot-status');
 const perf = document.querySelector<HTMLElement>('#perf');
 
-if (!canvas || !startPanel || !startButton || !backendLabel || !perf) {
+if (!canvas || !startPanel || !startButton || !backendLabel || !bootStatus || !perf) {
   throw new Error('Required game DOM missing');
 }
 
@@ -37,12 +38,14 @@ let running = false;
 startButton.addEventListener('click', async () => {
   if (running) return;
   startButton.disabled = true;
-  startButton.textContent = 'ENTERING LANDSCAPE…';
+  startButton.textContent = 'ENTERING…';
+  bootStatus.textContent = 'NEGOTIATING DISPLAY';
 
   try {
     await enterGamePresentation(app);
     syncVisualViewport();
     startButton.textContent = 'INITIALIZING…';
+    bootStatus.textContent = 'LOADING RANGE';
     backendLabel.textContent = 'LOADING RANGE';
 
     const [{ createEngine, createWorld }, { AdaptiveResolution }, { Game }, { GAME }] = await Promise.all([
@@ -73,8 +76,10 @@ startButton.addEventListener('click', async () => {
       targetNoiseButton: requireElement<HTMLButtonElement>('#target-noise'),
     };
 
+    bootStatus.textContent = 'INITIALIZING RENDERER';
     backendLabel.textContent = 'INITIALIZING RENDERER';
     const { engine, backend } = await createEngine(canvas);
+    bootStatus.textContent = 'INITIALIZING WORLD';
     backendLabel.textContent = 'INITIALIZING WORLD';
     const { scene, physicsMode, physicsFallbackReason } = await createWorld(engine);
     const adaptive = new AdaptiveResolution(engine);
@@ -84,6 +89,7 @@ startButton.addEventListener('click', async () => {
 
     running = true;
     backendLabel.textContent = 'SYSTEM READY';
+    bootStatus.textContent = 'SYSTEM READY';
     document.body.classList.add('game-running');
     startPanel.classList.add('hidden');
 
@@ -118,6 +124,7 @@ startButton.addEventListener('click', async () => {
   } catch (error) {
     console.error(error);
     backendLabel.textContent = 'STARTUP FAILED';
+    bootStatus.textContent = 'STARTUP FAILED';
     startButton.disabled = false;
     startButton.textContent = 'RETRY';
 

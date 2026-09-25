@@ -228,3 +228,76 @@ body.controls-editing .touch-move-zone { pointer-events: none; }
   .game-tool--touch { display: block; }
   body.controls-editing .touch-controls { display: block !important; }
 }
+
+
+/* Boot is a separate presentation state: do not leak gameplay HUD into the launcher. */
+body:not(.game-running) .hud,
+body:not(.game-running) .game-tools,
+body:not(.game-running) .touch-controls {
+  display: none !important;
+}
+
+.panel--start {
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  width: auto;
+  max-height: calc(var(--game-height, 100dvh) - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  grid-template-columns: minmax(240px, .9fr) minmax(300px, 1.25fr);
+  gap: clamp(16px, 4vw, 44px);
+  align-items: end;
+  padding: clamp(16px, 3vw, 30px);
+}
+.boot-brand { min-width: 0; align-self: end; }
+.boot-copy { min-width: 0; display: grid; gap: 10px; align-content: end; }
+.panel--start h1 {
+  margin: 8px 0 4px;
+  max-width: 100%;
+  font-size: clamp(46px, 8.8vw, 96px);
+  line-height: .82;
+  white-space: nowrap;
+}
+.panel--start h1 em { font-size: .54em; margin: 0 .06em; }
+.panel--start p { margin: 0; }
+.boot-status {
+  color: rgba(143,255,178,.62);
+  font-size: 9px;
+  letter-spacing: .16em;
+  min-height: 1.2em;
+}
+.panel--start .install-hint,
+.panel--start .controls { margin-top: 0; }
+
+@media (max-width: 760px) {
+  .panel--start {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 10px;
+  }
+  .panel--start h1 { white-space: normal; font-size: clamp(42px, 12vw, 72px); }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .panel--start {
+    top: max(8px, env(safe-area-inset-top));
+    bottom: max(8px, env(safe-area-inset-bottom));
+    max-height: none;
+    grid-template-columns: minmax(210px, .82fr) minmax(300px, 1.45fr);
+    gap: 16px;
+    padding: 12px 14px;
+    align-items: center;
+  }
+  .panel--start h1 {
+    font-size: clamp(36px, 7vw, 64px);
+    white-space: normal;
+    line-height: .82;
+  }
+  .panel--start .panel__eyebrow { font-size: 8px; }
+  .panel--start p { font-size: 10px; line-height: 1.35; }
+  .panel--start .install-hint { font-size: 8px; padding: 6px 8px; }
+  .panel--start .controls { font-size: 8px; line-height: 1.4; }
+  .panel--start .boot-actions button { padding: 9px 14px; }
+}
