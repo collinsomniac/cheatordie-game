@@ -99,6 +99,7 @@ export class RobotEntity {
   grounded = false;
   cameraMode: CameraMode = 'first';
   alive = true;
+  noiseLevel = 0;
   private fireCooldown = 0;
   private cameraToggleLatch = false;
   private readonly callbacks: RobotCallbacks;
@@ -145,6 +146,14 @@ export class RobotEntity {
     return this.cachedStats;
   }
 
+  get noisy(): boolean {
+    return this.noiseLevel >= 0.45;
+  }
+
+  pulseNoise(amount = 1): void {
+    this.noiseLevel = Math.max(this.noiseLevel, Math.min(1, amount));
+  }
+
   get eyePosition(): Vector3 {
     return this.root.position.add(new Vector3(0, 1.5, 0));
   }
@@ -179,6 +188,7 @@ export class RobotEntity {
 
   update(dt: number): void {
     if (!this.alive) return;
+    this.noiseLevel = Math.max(0, this.noiseLevel - dt * 1.9);
     const stats = this.stats;
     const needsTargets = this.controller.kind === 'bot' || stats.aimAssist > 0 || stats.triggerAngle > 0;
     const targets = needsTargets ? this.callbacks.getTargets(this) : [];
@@ -200,6 +210,10 @@ export class RobotEntity {
     const moving = Math.hypot(intent.moveX, intent.moveY) > 0.05;
     this.loadout.mutateIntent(intent, moving, this.grounded);
     this.move(intent, stats, dt);
+    const planarSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+    if (planarSpeed > stats.moveSpeed * 0.72) {
+      this.noiseLevel = Math.max(this.noiseLevel, intent.sprint ? 0.7 : 0.5);
+    }
     this.fireCooldown = Math.max(0, this.fireCooldown - dt);
 
     const triggerbot = stats.triggerAngle > 0 && this.hasTargetInCone(stats.triggerAngle, targets);
@@ -221,6 +235,7 @@ export class RobotEntity {
     this.alive = true;
     this.health = this.stats.maxHealth;
     this.velocity.setAll(0);
+    this.noiseLevel = 0;
     if (this.character) {
       this.character.setVelocity(Vector3.Zero());
       this.character.setPosition(position);
@@ -451,6 +466,7 @@ export class RobotEntity {
 
   private fire(stats: RobotStats): void {
     this.fireCooldown = stats.fireInterval;
+    this.pulseNoise(1);
     const direction = this.forward;
     const origin = this.eyePosition.add(direction.scale(0.45));
     const result = this.callbacks.resolveShot(this, origin, direction, stats.range);

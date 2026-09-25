@@ -31,6 +31,7 @@ export interface HUDRefs {
   loadoutToggle: HTMLButtonElement;
   loadoutClose: HTMLButtonElement;
   espMarker: HTMLElement;
+  targetNoiseButton: HTMLButtonElement;
 }
 
 const SLOT_LABELS: Record<BodySlot, string> = {
@@ -71,7 +72,7 @@ export class Game {
     private readonly scene: Scene,
     private readonly canvas: HTMLCanvasElement,
     private readonly hud: HUDRefs,
-    private readonly physicsMode: PhysicsMode,
+    physicsMode: PhysicsMode,
   ) {
     this.input = new InputManager(canvas);
     const callbacks = this.callbacks();
@@ -119,6 +120,7 @@ export class Game {
     this.hud.loadoutClose.addEventListener('click', this.closeLoadout);
     this.hud.loadoutBody.addEventListener('click', this.onBodySlotClick);
     this.hud.partCatalog.addEventListener('click', this.onPartCatalogClick);
+    this.hud.targetNoiseButton.addEventListener('click', this.pulseTargetNoise);
     window.addEventListener('keydown', this.onKeyDown);
 
     this.renderLoadout();
@@ -147,6 +149,7 @@ export class Game {
     this.hud.loadoutClose.removeEventListener('click', this.closeLoadout);
     this.hud.loadoutBody.removeEventListener('click', this.onBodySlotClick);
     this.hud.partCatalog.removeEventListener('click', this.onPartCatalogClick);
+    this.hud.targetNoiseButton.removeEventListener('click', this.pulseTargetNoise);
     window.removeEventListener('keydown', this.onKeyDown);
     this.weaponRoot.dispose(false, true);
     for (const robot of this.robots) robot.dispose();
@@ -312,6 +315,11 @@ export class Game {
     });
     this.hud.partCatalog.replaceChildren(...cards);
   }
+
+  private pulseTargetNoise = (): void => {
+    this.dummy.pulseNoise(1);
+    this.toast('TARGET NOISE BURST // 1.0');
+  };
 
   private onKeyDown = (event: KeyboardEvent): void => {
     if (event.code === 'Tab' || event.code === 'KeyC') {
