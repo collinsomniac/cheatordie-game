@@ -38,6 +38,30 @@ async function bootCase(browser, label, query, expectedDebug, contextOptions = {
 
   const join = query.includes('?') ? '&' : '?';
   await page.goto(origin + base + query + join + 'debug=1', { waitUntil: 'domcontentloaded' });
+
+  const preboot = await page.evaluate(() => {
+    const app = document.querySelector('#app')?.getBoundingClientRect();
+    const panel = document.querySelector('#start-panel')?.getBoundingClientRect();
+    const hud = document.querySelector('#hud');
+    const tools = document.querySelector('.game-tools');
+    return {
+      app: app ? { left: app.left, top: app.top, right: app.right, bottom: app.bottom } : null,
+      panel: panel ? { left: panel.left, top: panel.top, right: panel.right, bottom: panel.bottom } : null,
+      hudDisplay: hud ? getComputedStyle(hud).display : null,
+      toolsDisplay: tools ? getComputedStyle(tools).display : null,
+    };
+  });
+  if (!preboot.app || !preboot.panel ||
+      preboot.panel.left < preboot.app.left - 1 ||
+      preboot.panel.top < preboot.app.top - 1 ||
+      preboot.panel.right > preboot.app.right + 1 ||
+      preboot.panel.bottom > preboot.app.bottom + 1) {
+    throw new Error(label + ': boot panel is outside the visible app: ' + JSON.stringify(preboot));
+  }
+  if (preboot.hudDisplay !== 'none' || preboot.toolsDisplay !== 'none') {
+    throw new Error(label + ': gameplay HUD leaked into boot screen: ' + JSON.stringify(preboot));
+  }
+
   await page.locator('#start-button').click();
 
   try {
@@ -102,11 +126,42 @@ async function bootCase(browser, label, query, expectedDebug, contextOptions = {
   const partCount = await page.locator('.part-card').count();
   if (partCount < 8) throw new Error(label + ': chassis catalog did not render expected parts.');
 
-  const firstAvailable = page.locator('.part-card:not(:disabled)').first();
-  await firstAvailable.click();
-  const occupiedSlots = await page.locator('.slot.is-occupied').count();
-  if (occupiedSlots < 1) throw new Error(label + ': installing a part did not occupy body sockets.');
-  await page.locator('#target-noise').click();
+  const tagEsp = page.locator('[data-part-id="acoustic-esp"]');
+  await tagEsp.click();
+  let occupiedSlots = await page.locator('.slot.is-occupied').count();
+  if (occupiedSlots !== 1) throw new Error(label + ': TAG-ESP should occupy exactly one sensor socket.');
+
+  await page.locator('#target-spin').click();
+  const spinLabel = await page.locator('#target-spin').textContent();
+  if (!spinLabel?.includes('ON')) throw new Error(label + ': target spinbot diagnostic did not enable.');
+
+  await page.locator('#loadout-close').click();
+  await page.waitForTimeout(120);
+  const tagMode = await page.locator('#esp-marker').getAttribute('data-mode');
+  if (tagMode !== 'tag') throw new Error(label + ': one-slot ESP did not expose telemetry-only mode.');
+
+  await page.locator('#loadout-toggle').click();
+  await page.locator('.slot.is-occupied').first().click();
+
+  const xray = page.locator('[data-part-id="wallhack-array"]');
+  await xray.click();
+  occupiedSlots = await page.locator('.slot.is-occupied').count();
+  if (occupiedSlots !== 2) throw new Error(label + ': XRAY should occupy both sensor sockets.');
+  await page.locator('#loadout-close').click();
+  await page.waitForTimeout(120);
+  const xrayMode = await page.locator('#esp-marker').getAttribute('data-mode');
+  if (xrayMode !== 'xray') throw new Error(label + ': two-slot wallhack did not expose XRAY mode.');
+
+  await page.locator('#loadout-toggle').click();
+  for (let guard = 0; guard < 12; guard += 1) {
+    const occupied = page.locator('.slot.is-occupied');
+    if (await occupied.count() === 0) break;
+    await occupied.first().click();
+  }
+  const akimbo = page.locator('[data-part-id="dual-wield-rig"]');
+  await akimbo.click();
+  occupiedSlots = await page.locator('.slot.is-occupied').count();
+  if (occupiedSlots !== 3) throw new Error(label + ': AKIMBO should occupy both arms + torso.');
   await page.locator('#loadout-close').click();
 
   if (runtimeErrors.length) {
