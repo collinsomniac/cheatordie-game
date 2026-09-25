@@ -2,10 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
     <meta name="theme-color" content="#090b0c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CHEAT OR DIE" />
     <meta name="mobile-web-app-capable" content="yes" />
     <title>CHEAT OR DIE // Sandbox</title>
   </head>
@@ -38,7 +40,11 @@
           <div id="mutation-strip" class="mutations"></div>
         </div>
       </div>
-      <button id="loadout-toggle" class="loadout-fab" type="button">CHASSIS</button>
+      <div class="game-tools">
+        <button id="loadout-toggle" class="game-tool" type="button">CHASSIS</button>
+        <button id="controls-edit-toggle" class="game-tool game-tool--touch" type="button">EDIT HUD</button>
+        <button id="controls-reset" class="game-tool game-tool--touch hidden" type="button">RESET</button>
+      </div>
 
       <div id="start-panel" class="panel panel--start">
         <div class="panel__eyebrow">UNLICENSED COMBAT CHASSIS // SANDBOX 0.2</div>
@@ -47,8 +53,9 @@
         <div class="boot-actions">
           <button id="start-button" type="button">ENTER SANDBOX</button>
         </div>
+        <div class="install-hint"><b>iPHONE FULLSCREEN</b> Safari 27 still keeps browser chrome for interactive pages. Use <b>Share → Add to Home Screen</b>, then launch CHEAT OR DIE from the icon.</div>
         <div class="controls">
-          <b>TOUCH</b> left stick · right-side swipe aim · FIRE-drag · JUMP · RUN · VIEW<br/>
+          <b>TOUCH</b> left-side floating movement · drag right to look · tap right to fire · hold/drag FIRE · JUMP · RUN · VIEW<br/>
           <b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/>
           <b>DESKTOP</b> WASD · mouse · click · Space · Shift · V · C chassis
         </div>
@@ -103,14 +110,15 @@
       </section>
 
       <div id="touch-controls" class="touch-controls" aria-label="Touch controls">
-        <div class="touch-stick touch-stick--move" data-touch-stick="move" aria-label="Movement joystick">
-          <i class="touch-stick__knob"></i><span>MOVE</span>
+        <div class="touch-move-zone" data-touch-move aria-label="Movement area"><span>MOVE AREA</span></div>
+        <div class="touch-stick touch-stick--move" data-touch-stick="move" aria-hidden="true">
+          <i class="touch-stick__knob"></i>
         </div>
-        <div class="touch-look-zone" data-touch-look aria-label="Aim surface"><span>SWIPE TO AIM</span></div>
-        <button class="touch-button touch-button--fire" data-touch-button="fire" type="button">FIRE</button>
-        <button class="touch-button touch-button--jump" data-touch-button="jump" type="button">JUMP</button>
-        <button class="touch-button touch-button--sprint" data-touch-button="sprint" type="button">RUN</button>
-        <button class="touch-button touch-button--camera" data-touch-button="camera" type="button">VIEW</button>
+        <div class="touch-look-zone" data-touch-look aria-label="Aim and tap-fire surface"><span>DRAG LOOK · TAP FIRE</span></div>
+        <button class="touch-button touch-button--fire" data-layout-key="fire" data-touch-button="fire" type="button">FIRE</button>
+        <button class="touch-button touch-button--jump" data-layout-key="jump" data-touch-button="jump" type="button">JUMP</button>
+        <button class="touch-button touch-button--sprint" data-layout-key="sprint" data-touch-button="sprint" type="button">RUN</button>
+        <button class="touch-button touch-button--camera" data-layout-key="camera" data-touch-button="camera" type="button">VIEW</button>
       </div>
 
       <div id="orientation-gate" class="orientation-gate" aria-live="polite">

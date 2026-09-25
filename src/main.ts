@@ -1,4 +1,7 @@
 import './style.css';
+import { TouchLayoutEditor } from './game/touchLayout';
+
+syncVisualViewport();
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game');
 const startPanel = document.querySelector<HTMLElement>('#start-panel');
@@ -9,6 +12,22 @@ const perf = document.querySelector<HTMLElement>('#perf');
 if (!canvas || !startPanel || !startButton || !backendLabel || !perf) {
   throw new Error('Required game DOM missing');
 }
+
+const app = requireElement<HTMLElement>('#app');
+const touchControls = requireElement<HTMLElement>('#touch-controls');
+const controlsEdit = requireElement<HTMLButtonElement>('#controls-edit-toggle');
+const controlsReset = requireElement<HTMLButtonElement>('#controls-reset');
+new TouchLayoutEditor(touchControls, controlsEdit, controlsReset);
+
+const standalone =
+  window.matchMedia('(display-mode: standalone)').matches ||
+  window.matchMedia('(display-mode: fullscreen)').matches ||
+  Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+document.documentElement.dataset.displayMode = standalone ? 'installed' : 'browser';
+
+app.addEventListener('gesturestart', (event) => event.preventDefault(), { passive: false });
+app.addEventListener('contextmenu', (event) => event.preventDefault());
+app.addEventListener('selectstart', (event) => event.preventDefault());
 
 const debugEnabled = new URLSearchParams(location.search).get('debug') === '1';
 if (debugEnabled) perf.classList.remove('hidden');
@@ -21,7 +40,8 @@ startButton.addEventListener('click', async () => {
   startButton.textContent = 'ENTERING LANDSCAPE…';
 
   try {
-    await enterGamePresentation();
+    await enterGamePresentation(app);
+    syncVisualViewport();
     startButton.textContent = 'INITIALIZING…';
     backendLabel.textContent = 'LOADING RANGE';
 
@@ -84,9 +104,14 @@ startButton.addEventListener('click', async () => {
       scene.render();
     });
 
-    const resize = (): void => engine.resize();
+    const resize = (): void => {
+      syncVisualViewport();
+      engine.resize();
+    };
     window.addEventListener('resize', resize);
     window.addEventListener('orientationchange', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('scroll', resize);
   } catch (error) {
     console.error(error);
     backendLabel.textContent = 'STARTUP FAILED';
@@ -114,15 +139,20 @@ function requireElement<T extends HTMLElement = HTMLElement>(selector: string): 
   return element;
 }
 
-async function enterGamePresentation(): Promise<void> {
-  const app = requireElement<HTMLElement>('#app');
+function syncVisualViewport(): void {
+  const viewport = window.visualViewport;
+  const width = Math.round(viewport?.width ?? window.innerWidth);
+  const height = Math.round(viewport?.height ?? window.innerHeight);
+  document.documentElement.style.setProperty('--game-width', `${width}px`);
+  document.documentElement.style.setProperty('--game-height', `${height}px`);
+}
 
-  // Keep browser chrome and accidental page gestures out of the core touch surface when supported.
-  if (!document.fullscreenElement && typeof app.requestFullscreen === 'function') {
+async function enterGamePresentation(appElement: HTMLElement): Promise<void> {
+  if (!document.fullscreenElement && typeof appElement.requestFullscreen === 'function') {
     try {
-      await app.requestFullscreen({ navigationUI: 'hide' });
+      await appElement.requestFullscreen({ navigationUI: 'hide' });
     } catch (error) {
-      console.info('Fullscreen unavailable; continuing with landscape/touch containment.', error);
+      console.info('Interactive fullscreen unavailable; using installed-app/visual-viewport presentation.', error);
     }
   }
 
