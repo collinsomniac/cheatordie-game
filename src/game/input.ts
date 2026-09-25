@@ -429,6 +429,13 @@ export class PlayerController implements RobotController {
   }
 }
 
+export class StaticBotController implements RobotController {
+  readonly kind = 'bot' as const;
+  sample(_context: ControllerContext): ControlIntent {
+    return { moveX: 0, moveY: 0, lookX: 0, lookY: 0, fire: false, jump: false, sprint: false, toggleCamera: false };
+  }
+}
+
 export interface BotTuning {
   aggression: number;
   preferredDistance: number;
