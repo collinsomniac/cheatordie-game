@@ -38,7 +38,9 @@ Balancing therefore has three independent axes: strength, footprint/opportunity 
 
 Long-term direction: world truth -> sensors -> target model/memory -> intent assistance -> movement/aim -> weapon policy -> physics.
 
-Current sensor baseline respects line of sight. ECHO-ESP adds conditional through-cover telemetry while noisy; XRAY adds persistent telemetry. HARDLOCK improves visible-target correction/trigger behavior but does not secretly grant wall sensing.
+Current sensor baseline respects line of sight. TAG-ESP adds one-sensor through-cover telemetry only. XRAY consumes both sensors and adds a depth-independent emissive robot silhouette. AIMBOT remains visible-target automation rather than implicitly gaining wall information.
+
+Anti-aim is represented as a separate visual yaw on RobotEntity. True yaw still drives movement/camera/fire. TargetSnapshot carries antiAim + visualYaw so automated targeting can receive a deceptive aim point. RESOLVER reduces that automated-targeting error. Manual aiming does not consume this synthetic error path.
 
 ## Assets
 
@@ -46,4 +48,4 @@ Current Dustlab and robot hardware are primitives because level proportions are 
 
 ## CI contract
 
-A build is not valid merely because TypeScript/Vite compile. CI boots production in Chromium and verifies SYSTEM READY, kinematic desktop boot, iPhone-like mobile boot, visible touch controls, opening the chassis editor, rendering parts, installing hardware into sockets, and sandbox diagnostics.
+A build is not valid merely because TypeScript/Vite compile. CI boots production in Chromium and verifies boot-sheet containment, no preboot HUD leakage, SYSTEM READY, desktop/mobile boot, visual-viewport/control bounds, chassis rendering, TAG-ESP/XRAY modes, target spinbot diagnostics, and multi-slot AKIMBO installation.

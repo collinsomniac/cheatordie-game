@@ -1,48 +1,81 @@
 # Sandbox playtest
 
-## Mobile boot
+## Boot
 
-1. Rotate to landscape when prompted.
-2. Tap ENTER SANDBOX.
-3. In ordinary Safari, confirm the game exactly fits the visible browser content rectangle without cropping. Then use Share -> Add to Home Screen and compare the installed-app presentation.
-4. Confirm rapid taps do not trigger Safari double-tap zoom, selection, callouts, or page movement.
-5. Confirm FIRE, JUMP, RUN, VIEW and both gesture regions are completely on-screen.
+1. Load in landscape.
+2. Before entering, confirm only the boot sheet is visible: no vitals, CHASSIS or EDIT HUD behind it.
+3. Confirm the complete boot sheet stays inside the visible browser area. On an unusually shallow viewport it may scroll internally rather than crop.
+4. Tap ENTER SANDBOX.
+5. Confirm rapid taps do not invoke Safari zoom, selection, callouts or page movement.
 
 ## Movement
 
-Before installing hardware, touch several different points in the left half and verify each becomes the temporary movement origin. Test slow movement, strong-forward auto-sprint, hard reversals, diagonal sprint, jump while moving, manual bunny-hop timing, long-lane strafing, short/catwalk routing, and tunnel routing.
+Touch several different points in the left half and verify each becomes the temporary movement origin.
 
-Report dead zone, acceleration/stopping, max speed, air control, jump height, and auto-sprint threshold.
+Without hardware, test slow movement, strong-forward sprint, reversals, diagonal sprint and jump.
 
-Desktop note: Pointer Lock now starts only when the canvas is clicked; boot and chassis UI do not seize the pointer automatically.
+Then install BHOP. Hold movement and compare:
+- automatic landing jump timing
+- retained horizontal speed
+- air steering
 
-## Aim
+The BHOP status chip should visibly activate while the automation is being exercised.
 
-Test 180 turns, tiny target corrections, tracking while strafing, a quick stationary right-side tap for one shot, a right-side drag that does not fire, holding FIRE and dragging the same thumb, and target reacquisition after running a route.
+## Aim / fire
 
-Report horizontal/vertical sensitivity, perceived latency, fire-drag comfort, button occlusion, and accidental browser gestures.
+Test:
+- quick right-side tap -> one shot
+- meaningful right-side drag -> look without firing
+- FIRE hold -> continuous fire
+- FIRE hold + drag -> continuous fire with camera correction
+- MAG-OPTIC near target
+- AIMBOT with a vanilla target
 
-## Chassis lab
+## ESP tiers
 
-- install MAG-OPTIC then eject it via an occupied body socket
-- install ECHO-ESP and press EMIT TARGET NOISE
-- install XRAY and compare persistent telemetry
-- free the required sockets and install HARDLOCK; verify all five sockets occupy
-- confirm blocked catalog entries communicate incompatibility
+1. Install TAG-ESP in one sensor.
+2. Walk behind geometry so the target is occluded.
+3. Confirm a floating TARGET-01 tag remains with shield/health/distance.
+4. Confirm there is **no body silhouette**.
+5. Remove TAG-ESP.
+6. Install XRAY.
+7. Confirm both sensor sockets are occupied.
+8. Confirm the full target robot silhouette remains visible through geometry.
 
-## Environment
+## HvH anti-aim / resolver
 
-Evaluate long sightline, mid doorway/cover, short elevated route, tunnel route, route-flow enjoyment, collision snagging, ramps, corners, camera clipping, and map scale.
+1. Open CHASSIS and enable TARGET SPINBOT.
+2. Observe the target body spin/jitter while it remains physically stationary.
+3. Test manual shooting: your camera and manual aim should remain ordinary.
+4. Install MAG-OPTIC or AIMBOT without RESOLVER and observe degraded automated correction.
+5. Reconfigure for RESOLVER where compatible and compare automated targeting.
+6. Toggle target spinbot back off to establish baseline.
 
-## Performance report
+## AKIMBO
 
-If useful add ?debug=1 and report: device, iOS, browser/PWA, graphics/physics, FPS/render scale, session length, thermal behavior, movement, aim, fire-drag, layout conflicts, Dustlab collision problems, loadout UI, favorite/least useful part, and bugs.
-
+1. Free both arm sockets and torso.
+2. Install AKIMBO.
+3. Confirm exactly three sockets are occupied.
+4. First-person view should show a second carbine.
+5. Fire and confirm paired tracers/damage events.
+6. Compare recoil/visibility with the normal single-carbine configuration.
 
 ## HUD placement
 
-Tap EDIT HUD, drag FIRE/JUMP/RUN/VIEW into comfortable positions, then tap LOCK HUD. Reload and confirm positions persist. Test RESET. Controls should never be draggable outside the fitted game viewport.
+Tap EDIT HUD, move FIRE/JUMP/RUN/VIEW, lock, reload, and confirm persistence. RESET should restore defaults.
 
 ## Shields and damage numbers
 
-The target starts at 100 shield / 100 health. With the current 22-damage carbine, verify shield damage numbers are blue and health numbers red. The fifth shield hit should consume only the remaining shield amount and must not overflow into health; the next shot begins health damage.
+Target begins at 100 shield / 100 health. Current base carbine damage is 22:
+- 22 blue
+- 22 blue
+- 22 blue
+- 22 blue
+- 12 blue (shield break; overflow discarded)
+- next shot begins red health damage
+
+## Environment / performance
+
+Evaluate long/mid/short/tunnel route flow, collision snagging, camera clipping and map scale.
+
+If useful add ?debug=1 and report device, iOS, browser/PWA, graphics/physics, FPS/render scale, session length and thermal behavior.
