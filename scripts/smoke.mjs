@@ -23,38 +23,46 @@ async function waitForServer() {
   throw new Error('Vite preview did not become reachable.');
 }
 
-async function bootCase(browser, label, query, expectedBackend, contextOptions = {}) {
+async function bootCase(browser, label, query, expectedDebug, contextOptions = {}) {
   const context = await browser.newContext({
     viewport: { width: 1280, height: 720 },
     ...contextOptions,
   });
   const page = await context.newPage();
   const runtimeErrors = [];
+
   page.on('pageerror', (error) => runtimeErrors.push(error.stack || error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') runtimeErrors.push('console: ' + message.text());
   });
 
-  await page.goto(origin + base + query, { waitUntil: 'domcontentloaded' });
+  const join = query.includes('?') ? '&' : '?';
+  await page.goto(origin + base + query + join + 'debug=1', { waitUntil: 'domcontentloaded' });
   await page.locator('#start-button').click();
+
   try {
     await page.locator('#start-panel').waitFor({ state: 'hidden', timeout: 15_000 });
   } catch (error) {
-    const backendAtFailure = await page.locator('#backend-label').textContent().catch(() => null);
+    const stage = await page.locator('#backend-label').textContent().catch(() => null);
     const bootText = await page.locator('#start-panel p').textContent().catch(() => null);
     throw new Error(
-      label + ': boot never completed. stage=' + backendAtFailure +
+      label + ': boot never completed. stage=' + stage +
       '\nboot=' + bootText +
       '\nruntime=' + (runtimeErrors.length ? runtimeErrors.join('\n') : '(none)') +
       '\noriginal=' + (error instanceof Error ? error.message : String(error))
     );
   }
-  await page.waitForTimeout(500);
 
-  const backend = await page.locator('#backend-label').textContent();
-  const expected = Array.isArray(expectedBackend) ? expectedBackend : [expectedBackend];
-  if (!expected.some((value) => backend?.includes(value))) {
-    throw new Error(label + ': unexpected backend label: ' + backend + ' expected one of ' + expected.join(', '));
+  await page.waitForTimeout(600);
+
+  const ready = await page.locator('#backend-label').textContent();
+  if (ready !== 'SYSTEM READY') {
+    throw new Error(label + ': user-facing state was not SYSTEM READY: ' + ready);
+  }
+
+  const debug = await page.locator('#perf').textContent();
+  if (!debug?.includes(expectedDebug)) {
+    throw new Error(label + ': unexpected debug runtime: ' + debug + ' expected ' + expectedDebug);
   }
 
   const canvas = await page.locator('#game').evaluate((node) => ({
@@ -67,6 +75,19 @@ async function bootCase(browser, label, query, expectedBackend, contextOptions =
     throw new Error(label + ': canvas never acquired a drawable size: ' + JSON.stringify(canvas));
   }
 
+  // Chassis editor is part of the default sandbox contract, not a later wave-only screen.
+  await page.locator('#loadout-toggle').click();
+  await page.locator('#loadout-panel').waitFor({ state: 'visible', timeout: 2_000 });
+  const partCount = await page.locator('.part-card').count();
+  if (partCount < 8) throw new Error(label + ': chassis catalog did not render expected parts.');
+
+  const firstAvailable = page.locator('.part-card:not(:disabled)').first();
+  await firstAvailable.click();
+  const occupiedSlots = await page.locator('.slot.is-occupied').count();
+  if (occupiedSlots < 1) throw new Error(label + ': installing a part did not occupy body sockets.');
+  await page.locator('#target-noise').click();
+  await page.locator('#loadout-close').click();
+
   if (runtimeErrors.length) {
     throw new Error(label + ': runtime errors:\n' + runtimeErrors.join('\n'));
   }
@@ -78,7 +99,7 @@ async function bootCase(browser, label, query, expectedBackend, contextOptions =
     }
   }
 
-  console.log('Smoke passed:', label, backend, canvas);
+  console.log('Smoke passed:', label, debug, canvas, 'parts=' + partCount, 'occupied=' + occupiedSlots);
   await context.close();
 }
 
@@ -89,11 +110,18 @@ try {
     headless: true,
     args: ['--use-gl=swiftshader', '--enable-webgl'],
   });
-  await bootCase(browser, 'kinematic safety path', '?backend=webgl&physics=kinematic&seed=1', 'WEBGL2 · KINEMATIC');
+
   await bootCase(
     browser,
-    'iOS automatic path',
-    '?backend=webgl&seed=1',
+    'kinematic desktop path',
+    '?backend=webgl&physics=kinematic',
+    'WEBGL2 · KINEMATIC',
+  );
+
+  await bootCase(
+    browser,
+    'iOS landscape path',
+    '?backend=webgl',
     'WEBGL2 · KINEMATIC',
     {
       userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1',
@@ -108,6 +136,4 @@ try {
   preview.kill('SIGTERM');
 }
 
-// Vite preview can leave a grandchild/pipe alive after its npm wrapper is killed.
-// Reaching this line means every assertion passed, so terminate the smoke harness explicitly.
 process.exit(0);
