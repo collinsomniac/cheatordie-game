@@ -71,6 +71,27 @@ async function bootCase(browser, label, query, expectedDebug, contextOptions = {
     clientWidth: node.clientWidth,
     clientHeight: node.clientHeight,
   }));
+  const viewportFit = await page.locator('#app').evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return {
+      appWidth: rect.width,
+      appHeight: rect.height,
+      visualWidth: window.visualViewport?.width ?? window.innerWidth,
+      visualHeight: window.visualViewport?.height ?? window.innerHeight,
+    };
+  });
+  if (Math.abs(viewportFit.appWidth - viewportFit.visualWidth) > 2 ||
+      Math.abs(viewportFit.appHeight - viewportFit.visualHeight) > 2) {
+    throw new Error(label + ': app does not match visual viewport: ' + JSON.stringify(viewportFit));
+  }
+
+  const vitals = await page.evaluate(() => ({
+    shield: document.querySelector('#shield-label')?.textContent,
+    health: document.querySelector('#health-label')?.textContent,
+  }));
+  if (vitals.shield !== '100' || vitals.health !== '100') {
+    throw new Error(label + ': expected 100 shield / 100 health, got ' + JSON.stringify(vitals));
+  }
   if (canvas.width <= 0 || canvas.height <= 0 || canvas.clientWidth <= 0 || canvas.clientHeight <= 0) {
     throw new Error(label + ': canvas never acquired a drawable size: ' + JSON.stringify(canvas));
   }
@@ -97,6 +118,30 @@ async function bootCase(browser, label, query, expectedDebug, contextOptions = {
     if (touchDisplay === 'none') {
       throw new Error(label + ': touch-capable boot succeeded but touch controls are hidden.');
     }
+
+    const layout = await page.evaluate(() => {
+      const app = document.querySelector('#app')?.getBoundingClientRect();
+      const selectors = ['fire', 'jump', 'sprint', 'camera'];
+      const controls = selectors.map((key) => {
+        const rect = document.querySelector('[data-layout-key="' + key + '"]')?.getBoundingClientRect();
+        return rect ? { key, left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null;
+      });
+      return app ? { app: { left: app.left, top: app.top, right: app.right, bottom: app.bottom }, controls } : null;
+    });
+    if (!layout || layout.controls.some((control) =>
+      !control ||
+      control.left < layout.app.left ||
+      control.top < layout.app.top ||
+      control.right > layout.app.right ||
+      control.bottom > layout.app.bottom
+    )) {
+      throw new Error(label + ': one or more default touch controls are outside the visible app: ' + JSON.stringify(layout));
+    }
+
+    await page.locator('#controls-edit-toggle').click();
+    const editing = await page.evaluate(() => document.body.classList.contains('controls-editing'));
+    if (!editing) throw new Error(label + ': EDIT HUD did not unlock touch layout.');
+    await page.locator('#controls-edit-toggle').click();
   }
 
   console.log('Smoke passed:', label, debug, canvas, 'parts=' + partCount, 'occupied=' + occupiedSlots);
