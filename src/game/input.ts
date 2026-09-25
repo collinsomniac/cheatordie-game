@@ -1,6 +1,8 @@
 import type { ControlIntent, RobotController, ControllerContext } from './types';
 
 const DEADZONE = 0.15;
+const TOUCH_LOOK_X = 0.00315;
+const TOUCH_LOOK_Y = 0.00265;
 
 export function primaryGamepad(): Gamepad | null {
   const pads = navigator.getGamepads();
@@ -10,7 +12,6 @@ export function primaryGamepad(): Gamepad | null {
   }
   return null;
 }
-
 
 interface TouchSample {
   moveX: number;
@@ -26,19 +27,23 @@ interface TouchSample {
 class TouchControls {
   private moveX = 0;
   private moveY = 0;
-  private lookX = 0;
-  private lookY = 0;
+  private lookAccumX = 0;
+  private lookAccumY = 0;
   private fire = false;
-  private sprint = false;
+  private sprintHeld = false;
   private jumpQueued = false;
   private cameraQueued = false;
   private movePointer: number | null = null;
   private lookPointer: number | null = null;
+  private firePointer: number | null = null;
+  private lookLastX = 0;
+  private lookLastY = 0;
+  private fireLastX = 0;
+  private fireLastY = 0;
 
   private readonly moveStick: HTMLElement | null;
-  private readonly lookStick: HTMLElement | null;
   private readonly moveKnob: HTMLElement | null;
-  private readonly lookKnob: HTMLElement | null;
+  private readonly lookZone: HTMLElement | null;
   private readonly fireButton: HTMLElement | null;
   private readonly jumpButton: HTMLElement | null;
   private readonly sprintButton: HTMLElement | null;
@@ -46,70 +51,78 @@ class TouchControls {
 
   constructor(root: HTMLElement | null) {
     this.moveStick = root?.querySelector<HTMLElement>('[data-touch-stick="move"]') ?? null;
-    this.lookStick = root?.querySelector<HTMLElement>('[data-touch-stick="look"]') ?? null;
     this.moveKnob = this.moveStick?.querySelector<HTMLElement>('.touch-stick__knob') ?? null;
-    this.lookKnob = this.lookStick?.querySelector<HTMLElement>('.touch-stick__knob') ?? null;
+    this.lookZone = root?.querySelector<HTMLElement>('[data-touch-look]') ?? null;
     this.fireButton = root?.querySelector<HTMLElement>('[data-touch-button="fire"]') ?? null;
     this.jumpButton = root?.querySelector<HTMLElement>('[data-touch-button="jump"]') ?? null;
     this.sprintButton = root?.querySelector<HTMLElement>('[data-touch-button="sprint"]') ?? null;
     this.cameraButton = root?.querySelector<HTMLElement>('[data-touch-button="camera"]') ?? null;
 
-    this.bindStick(this.moveStick, 'move');
-    this.bindStick(this.lookStick, 'look');
-    this.bindHold(this.fireButton, (value) => { this.fire = value; });
-    this.bindHold(this.sprintButton, (value) => { this.sprint = value; });
+    this.bindMovement();
+    this.bindLookSurface();
+    this.bindFire();
+    this.bindHold(this.sprintButton, (value) => { this.sprintHeld = value; });
     this.bindTap(this.jumpButton, () => { this.jumpQueued = true; });
     this.bindTap(this.cameraButton, () => { this.cameraQueued = true; });
   }
 
   sample(): TouchSample {
-    const sample = {
-      moveX: this.moveX,
-      moveY: this.moveY,
-      lookX: this.lookX * 0.052,
-      lookY: this.lookY * 0.042,
-      fire: this.fire,
-      jump: this.jumpQueued,
-      sprint: this.sprint,
-      toggleCamera: this.cameraQueued,
-    };
+    const lookX = this.lookAccumX;
+    const lookY = this.lookAccumY;
+    this.lookAccumX = 0;
+    this.lookAccumY = 0;
+
+    const jump = this.jumpQueued;
+    const toggleCamera = this.cameraQueued;
     this.jumpQueued = false;
     this.cameraQueued = false;
-    return sample;
+
+    const autoSprint = this.moveY > 0.82 && Math.hypot(this.moveX, this.moveY) > 0.9;
+    return {
+      moveX: this.moveX,
+      moveY: this.moveY,
+      lookX,
+      lookY,
+      fire: this.fire,
+      jump,
+      sprint: this.sprintHeld || autoSprint,
+      toggleCamera,
+    };
   }
 
   clear(): void {
     this.moveX = 0;
     this.moveY = 0;
-    this.lookX = 0;
-    this.lookY = 0;
+    this.lookAccumX = 0;
+    this.lookAccumY = 0;
     this.fire = false;
-    this.sprint = false;
+    this.sprintHeld = false;
     this.jumpQueued = false;
     this.cameraQueued = false;
     this.movePointer = null;
     this.lookPointer = null;
-    this.resetKnob(this.moveKnob);
-    this.resetKnob(this.lookKnob);
+    this.firePointer = null;
+    this.resetMoveKnob();
+    this.lookZone?.classList.remove('is-active');
+    this.fireButton?.classList.remove('is-active');
+    this.sprintButton?.classList.remove('is-active');
   }
 
   dispose(): void {
-    // Elements are page-lifetime UI. Pointer handlers intentionally die with the page.
     this.clear();
   }
 
-  private bindStick(element: HTMLElement | null, kind: 'move' | 'look'): void {
+  private bindMovement(): void {
+    const element = this.moveStick;
     if (!element) return;
 
     const update = (event: PointerEvent): void => {
-      const active = kind === 'move' ? this.movePointer : this.lookPointer;
-      if (active !== event.pointerId) return;
+      if (this.movePointer !== event.pointerId) return;
       event.preventDefault();
-
       const rect = element.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
-      const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.36);
+      const radius = Math.max(1, Math.min(rect.width, rect.height) * 0.37);
       let x = (event.clientX - cx) / radius;
       let y = (event.clientY - cy) / radius;
       const length = Math.hypot(x, y);
@@ -118,52 +131,115 @@ class TouchControls {
         y /= length;
       }
 
-      const knob = kind === 'move' ? this.moveKnob : this.lookKnob;
-      if (knob) knob.style.transform = `translate(${x * radius * 0.52}px, ${y * radius * 0.52}px)`;
+      // Small physical dead zone prevents micro-drift without flattening the rest of the curve.
+      const magnitude = Math.hypot(x, y);
+      if (magnitude < 0.08) {
+        x = 0;
+        y = 0;
+      }
 
-      if (kind === 'move') {
-        this.moveX = x;
-        this.moveY = -y;
-      } else {
-        this.lookX = x;
-        this.lookY = y;
+      this.moveX = x;
+      this.moveY = -y;
+      if (this.moveKnob) {
+        this.moveKnob.style.transform = `translate(${x * radius * 0.53}px, ${y * radius * 0.53}px)`;
       }
     };
 
     element.addEventListener('pointerdown', (event) => {
+      if (this.movePointer !== null) return;
       event.preventDefault();
-      if (kind === 'move') {
-        if (this.movePointer !== null) return;
-        this.movePointer = event.pointerId;
-      } else {
-        if (this.lookPointer !== null) return;
-        this.lookPointer = event.pointerId;
-      }
+      this.movePointer = event.pointerId;
       element.setPointerCapture?.(event.pointerId);
       update(event);
     });
-
     element.addEventListener('pointermove', update);
 
     const release = (event: PointerEvent): void => {
-      const active = kind === 'move' ? this.movePointer : this.lookPointer;
-      if (active !== event.pointerId) return;
-      if (kind === 'move') {
-        this.movePointer = null;
-        this.moveX = 0;
-        this.moveY = 0;
-        this.resetKnob(this.moveKnob);
-      } else {
-        this.lookPointer = null;
-        this.lookX = 0;
-        this.lookY = 0;
-        this.resetKnob(this.lookKnob);
-      }
+      if (this.movePointer !== event.pointerId) return;
+      event.preventDefault();
+      this.movePointer = null;
+      this.moveX = 0;
+      this.moveY = 0;
+      this.resetMoveKnob();
     };
-
     element.addEventListener('pointerup', release);
     element.addEventListener('pointercancel', release);
     element.addEventListener('lostpointercapture', release);
+  }
+
+  private bindLookSurface(): void {
+    const element = this.lookZone;
+    if (!element) return;
+
+    element.addEventListener('pointerdown', (event) => {
+      if (this.lookPointer !== null) return;
+      event.preventDefault();
+      this.lookPointer = event.pointerId;
+      this.lookLastX = event.clientX;
+      this.lookLastY = event.clientY;
+      element.setPointerCapture?.(event.pointerId);
+      element.classList.add('is-active');
+    });
+
+    element.addEventListener('pointermove', (event) => {
+      if (this.lookPointer !== event.pointerId) return;
+      event.preventDefault();
+      this.addLookDelta(event.clientX - this.lookLastX, event.clientY - this.lookLastY);
+      this.lookLastX = event.clientX;
+      this.lookLastY = event.clientY;
+    });
+
+    const release = (event: PointerEvent): void => {
+      if (this.lookPointer !== event.pointerId) return;
+      event.preventDefault();
+      this.lookPointer = null;
+      element.classList.remove('is-active');
+    };
+    element.addEventListener('pointerup', release);
+    element.addEventListener('pointercancel', release);
+    element.addEventListener('lostpointercapture', release);
+  }
+
+  private bindFire(): void {
+    const element = this.fireButton;
+    if (!element) return;
+
+    element.addEventListener('pointerdown', (event) => {
+      if (this.firePointer !== null) return;
+      event.preventDefault();
+      this.firePointer = event.pointerId;
+      this.fireLastX = event.clientX;
+      this.fireLastY = event.clientY;
+      this.fire = true;
+      element.setPointerCapture?.(event.pointerId);
+      element.classList.add('is-active');
+    });
+
+    // Fire-drag mirrors modern mobile shooters: keep firing while the same thumb fine-aims.
+    element.addEventListener('pointermove', (event) => {
+      if (this.firePointer !== event.pointerId) return;
+      event.preventDefault();
+      this.addLookDelta(event.clientX - this.fireLastX, event.clientY - this.fireLastY);
+      this.fireLastX = event.clientX;
+      this.fireLastY = event.clientY;
+    });
+
+    const release = (event: PointerEvent): void => {
+      if (this.firePointer !== event.pointerId) return;
+      event.preventDefault();
+      this.firePointer = null;
+      this.fire = false;
+      element.classList.remove('is-active');
+    };
+    element.addEventListener('pointerup', release);
+    element.addEventListener('pointercancel', release);
+    element.addEventListener('lostpointercapture', release);
+  }
+
+  private addLookDelta(dx: number, dy: number): void {
+    // Clamp pathological pointer jumps but preserve 1:1 relative response inside the useful range.
+    this.lookAccumX += Math.max(-80, Math.min(80, dx)) * TOUCH_LOOK_X;
+    this.lookAccumY += Math.max(-80, Math.min(80, dy)) * TOUCH_LOOK_Y;
   }
 
   private bindHold(element: HTMLElement | null, setValue: (value: boolean) => void): void {
@@ -196,8 +272,8 @@ class TouchControls {
     element.addEventListener('pointercancel', release);
   }
 
-  private resetKnob(knob: HTMLElement | null): void {
-    if (knob) knob.style.transform = 'translate(0px, 0px)';
+  private resetMoveKnob(): void {
+    if (this.moveKnob) this.moveKnob.style.transform = 'translate(0px, 0px)';
   }
 }
 
@@ -241,17 +317,16 @@ export class InputManager {
   requestPointerLock(): void {
     if (document.pointerLockElement === this.canvas || !('requestPointerLock' in this.canvas)) return;
     try {
-      // iOS/WebKit may expose Pointer Lock while refusing a particular request.
-      // A rejected lock is non-fatal because gamepad input does not depend on it.
       void Promise.resolve(this.canvas.requestPointerLock()).catch(() => undefined);
     } catch {
-      // Older/partial implementations can throw synchronously.
+      // Partial Pointer Lock implementations are non-fatal because gamepad/touch do not depend on it.
     }
   }
 
   sample(): ControlIntent {
     const pad = primaryGamepad();
     const touch = this.touch.sample();
+
     let moveX = (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0);
     let moveY = (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0);
     let lookX = this.pointerDX * 0.0022;
@@ -395,7 +470,6 @@ export class BotController implements RobotController {
 
     const remembered = target.visible ? target.position : this.lastSeen;
     if (!remembered) {
-      // Search rather than tracking an opponent through geometry before ever seeing them.
       return {
         moveX: this.orbitSign * 0.28,
         moveY: 0.18,

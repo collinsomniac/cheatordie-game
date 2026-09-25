@@ -30,9 +30,8 @@
         <p>A browser-native FPS where cheating is the build system. Survive waves, steal illegal firmware, mutate the same robot architecture your enemies use.</p>
         <div class="boot-actions">
           <button id="start-button" type="button">BOOT CHASSIS</button>
-          <button id="safe-mode-button" class="button--secondary hidden" type="button">SAFE MODE</button>
         </div>
-        <div class="controls"><b>TOUCH</b> dual sticks · FIRE · JUMP · RUN · VIEW<br/><b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/><b>DESKTOP</b> WASD · mouse · click · Space · Shift · V</div>
+        <div class="controls"><b>TOUCH</b> left stick · right swipe aim · FIRE-drag · JUMP · RUN · VIEW<br/><b>GAMEPAD</b> LS move · RS aim · RT fire · A jump · L3 sprint · Y camera<br/><b>DESKTOP</b> WASD · mouse · click · Space · Shift · V</div>
       </div>
       <div id="upgrade-panel" class="panel panel--upgrade hidden" aria-live="polite">
         <div class="panel__eyebrow">ILLEGAL FIRMWARE DETECTED</div>
@@ -41,11 +40,14 @@
       </div>
       <div id="touch-controls" class="touch-controls" aria-label="Touch controls">
         <div class="touch-stick touch-stick--move" data-touch-stick="move" aria-label="Movement joystick"><i class="touch-stick__knob"></i><span>MOVE</span></div>
-        <div class="touch-stick touch-stick--look" data-touch-stick="look" aria-label="Aim joystick"><i class="touch-stick__knob"></i><span>AIM</span></div>
+        <div class="touch-look-zone" data-touch-look aria-label="Aim surface"><span>SWIPE TO AIM</span></div>
         <button class="touch-button touch-button--fire" data-touch-button="fire" type="button">FIRE</button>
         <button class="touch-button touch-button--jump" data-touch-button="jump" type="button">JUMP</button>
         <button class="touch-button touch-button--sprint" data-touch-button="sprint" type="button">RUN</button>
         <button class="touch-button touch-button--camera" data-touch-button="camera" type="button">VIEW</button>
+      </div>
+      <div id="orientation-gate" class="orientation-gate" aria-live="polite">
+        <div><strong>LANDSCAPE REQUIRED</strong><span>Rotate your device to continue.</span></div>
       </div>
       <div id="toast" class="toast hidden"></div>
       <div id="perf" class="perf"></div>
