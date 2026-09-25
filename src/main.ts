@@ -63,7 +63,6 @@ startButton.addEventListener('click', async () => {
     backendLabel.textContent = 'SYSTEM READY';
     document.body.classList.add('game-running');
     startPanel.classList.add('hidden');
-    game.input.requestPointerLock();
 
     let last = performance.now();
     let accumulator = 0;

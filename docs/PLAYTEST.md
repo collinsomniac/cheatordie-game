@@ -13,6 +13,8 @@ Before installing hardware, test slow stick movement, strong-forward auto-sprint
 
 Report dead zone, acceleration/stopping, max speed, air control, jump height, and auto-sprint threshold.
 
+Desktop note: Pointer Lock now starts only when the canvas is clicked; boot and chassis UI do not seize the pointer automatically.
+
 ## Aim
 
 Test 180 turns, tiny target corrections, tracking while strafing, holding FIRE and dragging the same thumb, and target reacquisition after running a route.

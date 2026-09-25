@@ -244,8 +244,6 @@ export class Game {
     if (open) {
       if (document.pointerLockElement) document.exitPointerLock();
       this.renderLoadout();
-    } else {
-      this.input.requestPointerLock();
     }
   }
 
