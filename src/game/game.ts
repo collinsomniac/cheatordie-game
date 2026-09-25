@@ -2,53 +2,62 @@ import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { LinesMesh } from '@babylonjs/core/Meshes/linesMesh';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Ray } from '@babylonjs/core/Culling/ray';
 import { Scene } from '@babylonjs/core/scene';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { BotController, InputManager, PlayerController, primaryGamepad } from './input';
+import { InputManager, PlayerController, StaticBotController } from './input';
 import { RobotEntity, type RobotCallbacks, type ShotResult } from './robot';
 import { COLORS, GAME } from './config';
-import { drawMutationChoices, type MutationDefinition } from './mutations';
-import type { TargetSnapshot } from './types';
-import { RandomSource, mixSeed, runSeedFromLocation } from './rng';
+import { MUTATIONS, type MutationId } from './mutations';
+import type { BodySlot, TargetSnapshot } from './types';
 import type { PhysicsMode } from './world';
 
 export interface HUDRefs {
   healthFill: HTMLElement;
   healthLabel: HTMLElement;
-  waveLabel: HTMLElement;
+  modeLabel: HTMLElement;
   ammoLabel: HTMLElement;
   mutationStrip: HTMLElement;
-  upgradePanel: HTMLElement;
-  upgradeCards: HTMLElement;
   toast: HTMLElement;
   hitMarker: HTMLElement;
   damageVignette: HTMLElement;
+  loadoutPanel: HTMLElement;
+  loadoutBody: HTMLElement;
+  partCatalog: HTMLElement;
+  loadoutToggle: HTMLButtonElement;
+  loadoutClose: HTMLButtonElement;
+  espMarker: HTMLElement;
 }
+
+const SLOT_LABELS: Record<BodySlot, string> = {
+  head: 'HEAD',
+  'sensor-left': 'S-L',
+  'sensor-right': 'S-R',
+  'arm-left': 'A-L',
+  'arm-right': 'A-R',
+  torso: 'TORSO',
+  core: 'CORE',
+  'leg-left': 'L-L',
+  'leg-right': 'L-R',
+  utility: 'UTIL',
+};
 
 export class Game {
   readonly input: InputManager;
-  readonly seed: number;
-  private readonly upgradeRandom: RandomSource;
   private readonly robots: RobotEntity[] = [];
   private readonly player: RobotEntity;
+  private readonly dummy: RobotEntity;
   private readonly firstCamera: FreeCamera;
   private readonly thirdCamera: ArcRotateCamera;
-  private wave = 0;
-  private waveTransition = false;
-  private upgradeOpen = false;
   private readonly tracerPool: Array<{ mesh: LinesMesh; expiresAt: number }> = [];
   private tracerCursor = 0;
-  private upgradeChoices: MutationDefinition[] = [];
-  private upgradeIndex = 0;
-  private upgradePadLatch = false;
-  private waveOfferTimer: number | null = null;
-  private respawnTimer: number | null = null;
+  private dummyRespawnTimer: number | null = null;
   private toastTimer: number | null = null;
+  private loadoutOpen = false;
   private weaponRoot!: TransformNode;
   private muzzleFlash!: AbstractMesh;
   private weaponKick = 0;
@@ -60,70 +69,85 @@ export class Game {
 
   constructor(
     private readonly scene: Scene,
-    canvas: HTMLCanvasElement,
+    private readonly canvas: HTMLCanvasElement,
     private readonly hud: HUDRefs,
     private readonly physicsMode: PhysicsMode,
   ) {
     this.input = new InputManager(canvas);
-    this.seed = runSeedFromLocation();
-    this.upgradeRandom = new RandomSource(mixSeed(this.seed, 0x55504752));
     const callbacks = this.callbacks();
-    this.player = new RobotEntity(scene, 'player', 'player', new PlayerController(this.input), new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z), Color3.FromHexString(COLORS.player), callbacks, this.physicsMode);
+
+    this.player = new RobotEntity(
+      scene,
+      'player',
+      'player',
+      new PlayerController(this.input),
+      new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z),
+      Color3.FromHexString(COLORS.player),
+      callbacks,
+      physicsMode,
+    );
     this.robots.push(this.player);
+
+    this.dummy = new RobotEntity(
+      scene,
+      'target-dummy',
+      'enemy',
+      new StaticBotController(),
+      new Vector3(GAME.targetSpawn.x, GAME.targetSpawn.y, GAME.targetSpawn.z),
+      Color3.FromHexString(COLORS.enemy),
+      callbacks,
+      physicsMode,
+    );
+    this.dummy.yaw = Math.PI;
+    this.robots.push(this.dummy);
 
     this.firstCamera = new FreeCamera('first-camera', this.player.eyePosition, scene);
     this.firstCamera.minZ = 0.05;
     this.firstCamera.fov = 1.05;
     this.firstCamera.inputs.clear();
+
     this.thirdCamera = new ArcRotateCamera('third-camera', Math.PI, 1.12, 5.2, this.player.root.position, scene);
     this.thirdCamera.minZ = 0.1;
     this.thirdCamera.inputs.clear();
     scene.activeCamera = this.firstCamera;
+
     this.createViewModel();
     this.createTracerPool();
+    this.hud.modeLabel.textContent = 'SANDBOX // TARGET 01';
 
-    window.addEventListener('keydown', this.onUpgradeKey);
-    this.spawnWave();
+    this.hud.loadoutToggle.addEventListener('click', this.openLoadout);
+    this.hud.loadoutClose.addEventListener('click', this.closeLoadout);
+    this.hud.loadoutBody.addEventListener('click', this.onBodySlotClick);
+    this.hud.partCatalog.addEventListener('click', this.onPartCatalogClick);
+    window.addEventListener('keydown', this.onKeyDown);
+
+    this.renderLoadout();
+    this.updateHUD();
+    this.toast('SANDBOX ONLINE // TARGET DUMMY READY');
   }
 
   update(dt: number): void {
-    if (this.upgradeOpen) {
-      this.handleUpgradeGamepad();
-      return;
-    }
-    if (!this.player.alive) {
-      this.updateTracers();
-      this.updateCamera(dt);
-      this.updateViewModel(dt);
-      this.updateHUD();
-      return;
+    if (!this.loadoutOpen) {
+      this.player.update(dt);
+      this.dummy.update(dt);
     }
 
-    for (const robot of this.robots) robot.update(dt);
     this.updateTracers();
-    this.updateCamera(dt);
+    this.updateCamera();
     this.updateViewModel(dt);
     this.updateHUD();
-
-    if (!this.player.alive) return;
-
-    let aliveEnemies = 0;
-    for (const robot of this.robots) {
-      if (robot.faction === 'enemy' && robot.alive) aliveEnemies += 1;
-    }
-    if (aliveEnemies === 0 && !this.waveTransition) {
-      this.waveTransition = true;
-      this.clearWaveOffer();
-      this.waveOfferTimer = window.setTimeout(() => this.offerUpgrade(), 550);
-    }
+    this.updateESP();
   }
 
   dispose(): void {
-    window.removeEventListener('keydown', this.onUpgradeKey);
     this.input.dispose();
-    this.clearWaveOffer();
-    if (this.respawnTimer !== null) window.clearTimeout(this.respawnTimer);
+    if (this.dummyRespawnTimer !== null) window.clearTimeout(this.dummyRespawnTimer);
     if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.hud.loadoutToggle.removeEventListener('click', this.openLoadout);
+    this.hud.loadoutClose.removeEventListener('click', this.closeLoadout);
+    this.hud.loadoutBody.removeEventListener('click', this.onBodySlotClick);
+    this.hud.partCatalog.removeEventListener('click', this.onPartCatalogClick);
+    window.removeEventListener('keydown', this.onKeyDown);
     this.weaponRoot.dispose(false, true);
     for (const robot of this.robots) robot.dispose();
   }
@@ -137,7 +161,7 @@ export class Game {
         if (attacker === this.player && robot !== this.player) this.pulseHit();
       },
       onDeath: (robot) => {
-        if (robot === this.player) this.playerDied();
+        if (robot === this.dummy) this.scheduleDummyRespawn();
       },
       onShot: (robot, result) => {
         if (robot === this.player) {
@@ -182,158 +206,123 @@ export class Game {
       ray,
       (mesh: AbstractMesh) => mesh.isPickable && mesh.isEnabled() && mesh.metadata?.robotId !== shooter.id,
     );
-    if (!hit?.hit || !hit.pickedPoint || !hit.pickedMesh) return { victim: null, hitPoint: origin.add(direction.scale(range)) };
+    if (!hit?.hit || !hit.pickedPoint || !hit.pickedMesh) {
+      return { victim: null, hitPoint: origin.add(direction.scale(range)) };
+    }
+
     const robotId = hit.pickedMesh.metadata?.robotId as string | undefined;
-    const victim = robotId ? this.robots.find((candidate) => candidate.id === robotId && candidate !== shooter && candidate.alive) ?? null : null;
+    const victim = robotId
+      ? this.robots.find((candidate) => candidate.id === robotId && candidate !== shooter && candidate.alive) ?? null
+      : null;
     return { victim, hitPoint: hit.pickedPoint.clone() };
   }
 
-  private spawnWave(): void {
-    this.clearWaveOffer();
-    this.wave += 1;
-    this.waveTransition = false;
-    this.upgradeOpen = false;
-    this.hud.upgradePanel.classList.add('hidden');
-    this.hud.waveLabel.textContent = `WAVE ${String(this.wave).padStart(2, '0')}`;
-
-    for (let i = this.robots.length - 1; i >= 1; i -= 1) {
-      this.robots[i]?.dispose();
-      this.robots.splice(i, 1);
-    }
-
-    const count = Math.min(2 + Math.floor((this.wave - 1) * 0.75), 9);
-    for (let i = 0; i < count; i += 1) {
-      const angle = (i / count) * Math.PI * 2 + 0.7;
-      const radius = 10 + (i % 3) * 3;
-      const position = new Vector3(Math.sin(angle) * radius, 1.05, Math.cos(angle) * radius);
-      const difficulty = Math.min(1, (this.wave - 1) / 9);
-      const bot = new RobotEntity(
-        this.scene,
-        `enemy-${this.wave}-${i}`,
-        'enemy',
-        new BotController({
-          aggression: 0.45 + difficulty * 0.45,
-          preferredDistance: 9 - difficulty * 2.2,
-          strafe: 0.45 + difficulty * 0.35,
-          lookResponse: 2.2 + difficulty * 3.5,
-          fireCone: 0.085 - difficulty * 0.03,
-        }, new RandomSource(mixSeed(this.seed, this.wave, i)).next),
-        position,
-        Color3.FromHexString(i % 2 ? COLORS.enemy : COLORS.enemyAccent),
-        this.callbacks(),
-        this.physicsMode,
-      );
-      if (this.wave >= 3 && i === 0) bot.addMutation('speedhack');
-      if (this.wave >= 4 && i === 1) bot.addMutation('recoil-null');
-      if (this.wave >= 5 && i === 0) bot.addMutation('triggerbot');
-      this.robots.push(bot);
-    }
-
-    this.toast(`WAVE ${this.wave} // ${count} HOSTILE${count === 1 ? '' : 'S'}`);
+  private scheduleDummyRespawn(): void {
+    if (this.dummyRespawnTimer !== null) window.clearTimeout(this.dummyRespawnTimer);
+    this.toast('TARGET DOWN // RESETTING');
+    this.dummyRespawnTimer = window.setTimeout(() => {
+      this.dummyRespawnTimer = null;
+      this.dummy.respawn(new Vector3(GAME.targetSpawn.x, GAME.targetSpawn.y, GAME.targetSpawn.z));
+    }, 650);
   }
 
-  private offerUpgrade(): void {
-    this.waveOfferTimer = null;
-    if (!this.player.alive) return;
-    if (this.robots.some((robot) => robot.faction === 'enemy' && robot.alive)) return;
-    this.upgradeOpen = true;
-    const choices = drawMutationChoices(99, this.upgradeRandom.next)
-      .filter((choice) => this.player.loadout.availableSlot(choice.id) !== null)
-      .slice(0, 3);
-
-    if (choices.length === 0) {
-      this.toast('CHASSIS SATURATED // NO COMPATIBLE SOCKETS');
-      this.waveOfferTimer = window.setTimeout(() => this.spawnWave(), 900);
-      return;
-    }
-
-    this.upgradeChoices = choices;
-    this.upgradeIndex = 0;
-    this.hud.upgradeCards.replaceChildren();
-    choices.forEach((choice, index) => {
-      const button = document.createElement('button');
-      button.className = 'upgrade-card';
-      const mount = this.player.loadout.availableSlot(choice.id);
-      button.innerHTML = `<span>0${index + 1} // ${choice.code}</span><strong>${choice.name}</strong><p>${choice.description}</p><small>MOUNT: ${mount ?? 'none'} · COMPAT: ${choice.slots.join(' · ')}</small>`;
-      button.addEventListener('click', () => this.chooseUpgrade(choice));
-      this.hud.upgradeCards.append(button);
-    });
-    this.hud.upgradePanel.classList.remove('hidden');
-    this.renderUpgradeSelection();
-  }
-
-  private chooseUpgrade(choice: MutationDefinition): void {
-    if (!this.upgradeOpen) return;
-    const slot = this.player.addMutation(choice.id);
-    if (!slot) {
-      this.toast(`${choice.code} REJECTED // NO FREE SOCKET`);
-      return;
-    }
-    this.toast(`${choice.code} -> ${slot.toUpperCase()}`);
-    this.spawnWave();
-  }
-
-  private onUpgradeKey = (event: KeyboardEvent): void => {
-    if (!this.upgradeOpen) return;
-    const numeric = Number(event.key);
-    if (numeric >= 1 && numeric <= this.upgradeChoices.length) {
-      this.chooseUpgrade(this.upgradeChoices[numeric - 1]!);
-      return;
-    }
-    if (event.code === 'ArrowLeft' || event.code === 'KeyA') this.moveUpgradeSelection(-1);
-    if (event.code === 'ArrowRight' || event.code === 'KeyD') this.moveUpgradeSelection(1);
-    if (event.code === 'Enter' || event.code === 'Space') this.chooseUpgrade(this.upgradeChoices[this.upgradeIndex]!);
+  private openLoadout = (): void => {
+    this.setLoadoutOpen(true);
   };
 
-  private handleUpgradeGamepad(): void {
-    const pad = primaryGamepad();
-    if (!pad) return;
-    const left = Boolean(pad.buttons[14]?.pressed) || (pad.axes[0] ?? 0) < -0.65;
-    const right = Boolean(pad.buttons[15]?.pressed) || (pad.axes[0] ?? 0) > 0.65;
-    const accept = Boolean(pad.buttons[0]?.pressed);
-    const active = left || right || accept;
-    if (active && !this.upgradePadLatch) {
-      if (left) this.moveUpgradeSelection(-1);
-      else if (right) this.moveUpgradeSelection(1);
-      else if (accept) this.chooseUpgrade(this.upgradeChoices[this.upgradeIndex]!);
+  private closeLoadout = (): void => {
+    this.setLoadoutOpen(false);
+  };
+
+  private setLoadoutOpen(open: boolean): void {
+    this.loadoutOpen = open;
+    this.hud.loadoutPanel.classList.toggle('hidden', !open);
+    document.body.classList.toggle('menu-open', open);
+    if (open) {
+      if (document.pointerLockElement) document.exitPointerLock();
+      this.renderLoadout();
+    } else {
+      this.input.requestPointerLock();
     }
-    this.upgradePadLatch = active;
   }
 
-  private moveUpgradeSelection(delta: number): void {
-    if (!this.upgradeChoices.length) return;
-    this.upgradeIndex = (this.upgradeIndex + delta + this.upgradeChoices.length) % this.upgradeChoices.length;
-    this.renderUpgradeSelection();
-  }
+  private onBodySlotClick = (event: Event): void => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-body-slot]');
+    if (!button) return;
+    const slot = button.dataset.bodySlot as BodySlot | undefined;
+    if (!slot) return;
+    const installed = this.player.loadout.instanceAt(slot);
+    if (!installed) return;
 
-  private renderUpgradeSelection(): void {
-    [...this.hud.upgradeCards.children].forEach((node, index) => {
-      node.classList.toggle('is-selected', index === this.upgradeIndex);
+    const definition = MUTATIONS[installed.id];
+    if (this.player.removeMutation(installed.instanceId)) {
+      this.toast(`${definition.code} EJECTED`);
+      this.renderLoadout();
+    }
+  };
+
+  private onPartCatalogClick = (event: Event): void => {
+    const button = (event.target as Element | null)?.closest<HTMLButtonElement>('[data-part-id]');
+    if (!button || button.disabled) return;
+    const id = button.dataset.partId as MutationId | undefined;
+    if (!id || !(id in MUTATIONS)) return;
+
+    const installed = this.player.addMutation(id);
+    if (!installed) {
+      this.toast(`${MUTATIONS[id].code} // NO COMPATIBLE FREE MOUNT`);
+      return;
+    }
+
+    this.toast(`${MUTATIONS[id].code} -> ${installed.slots.map((slot) => SLOT_LABELS[slot]).join('+')}`);
+    this.renderLoadout();
+  };
+
+  private renderLoadout(): void {
+    for (const button of this.hud.loadoutBody.querySelectorAll<HTMLButtonElement>('[data-body-slot]')) {
+      const slot = button.dataset.bodySlot as BodySlot;
+      const installed = this.player.loadout.instanceAt(slot);
+      button.classList.toggle('is-occupied', Boolean(installed));
+      button.dataset.category = installed ? MUTATIONS[installed.id].category : '';
+      const code = installed ? MUTATIONS[installed.id].code : SLOT_LABELS[slot];
+      button.innerHTML = `<span>${SLOT_LABELS[slot]}</span><strong>${code}</strong>`;
+      button.title = installed ? `Tap to remove ${MUTATIONS[installed.id].name}` : `${SLOT_LABELS[slot]} free`;
+    }
+
+    const cards = Object.values(MUTATIONS).map((definition) => {
+      const pattern = this.player.loadout.availablePattern(definition.id);
+      const installedCount = this.player.loadout.count(definition.id);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'part-card';
+      button.dataset.partId = definition.id;
+      button.dataset.category = definition.category;
+      button.disabled = !pattern;
+      const footprint = definition.mounts
+        .map((mount) => mount.map((slot) => SLOT_LABELS[slot]).join('+'))
+        .join(' / ');
+      button.innerHTML = `
+        <span class="part-card__icon">${definition.icon}</span>
+        <span class="part-card__copy">
+          <small>${definition.category.toUpperCase()} // ${definition.code}${installedCount ? ` ×${installedCount}` : ''}</small>
+          <strong>${definition.name}</strong>
+          <em>${definition.description}</em>
+          <b>${pattern ? `FREE: ${pattern.map((slot) => SLOT_LABELS[slot]).join('+')}` : `BLOCKED: ${footprint}`}</b>
+        </span>`;
+      return button;
     });
+    this.hud.partCatalog.replaceChildren(...cards);
   }
 
-  private playerDied(): void {
-    this.clearWaveOffer();
-    this.upgradeOpen = false;
-    this.hud.upgradePanel.classList.add('hidden');
-    this.toast('CHASSIS FAILURE // REBOOTING');
-    if (this.respawnTimer !== null) window.clearTimeout(this.respawnTimer);
-    this.respawnTimer = window.setTimeout(() => {
-      this.respawnTimer = null;
-      this.player.respawn(new Vector3(GAME.playerSpawn.x, GAME.playerSpawn.y, GAME.playerSpawn.z));
-      this.wave = Math.max(0, this.wave - 1);
-      this.spawnWave();
-    }, 1200);
-  }
-
-  private clearWaveOffer(): void {
-    if (this.waveOfferTimer !== null) {
-      window.clearTimeout(this.waveOfferTimer);
-      this.waveOfferTimer = null;
+  private onKeyDown = (event: KeyboardEvent): void => {
+    if (event.code === 'Tab' || event.code === 'KeyC') {
+      event.preventDefault();
+      this.setLoadoutOpen(!this.loadoutOpen);
+    } else if (event.code === 'Escape' && this.loadoutOpen) {
+      this.setLoadoutOpen(false);
     }
-  }
+  };
 
-  private updateCamera(_dt: number): void {
+  private updateCamera(): void {
     const eye = this.player.eyePosition;
     const forward = this.player.forward;
     if (this.player.cameraMode === 'first') {
@@ -343,8 +332,7 @@ export class Game {
       this.player.meshParts.forEach((mesh) => { mesh.visibility = 0; });
     } else {
       this.scene.activeCamera = this.thirdCamera;
-      const alpha = Math.PI / 2 - this.player.yaw;
-      this.thirdCamera.alpha = alpha;
+      this.thirdCamera.alpha = Math.PI / 2 - this.player.yaw;
       this.thirdCamera.beta = 1.15 + this.player.pitch * 0.3;
       this.thirdCamera.radius = 5.4;
       this.thirdCamera.target.copyFrom(this.player.root.position.add(new Vector3(0, 1.0, 0)));
@@ -400,7 +388,7 @@ export class Game {
   }
 
   private updateViewModel(dt: number): void {
-    const enabled = this.player.cameraMode === 'first' && this.player.alive;
+    const enabled = this.player.cameraMode === 'first' && this.player.alive && !this.loadoutOpen;
     this.weaponRoot.setEnabled(enabled);
     if (!enabled) return;
 
@@ -419,11 +407,7 @@ export class Game {
       -0.29 + bob - this.weaponKick * 0.022,
       0.72 - this.weaponKick * 0.075,
     );
-    this.weaponRoot.rotation.set(
-      0.025 + this.weaponKick * 0.085,
-      0,
-      -sway * 0.65,
-    );
+    this.weaponRoot.rotation.set(0.025 + this.weaponKick * 0.085, 0, -sway * 0.65);
   }
 
   private updateHUD(): void {
@@ -442,13 +426,50 @@ export class Game {
 
     if (this.player.loadout.revision !== this.lastMutationRevision) {
       this.lastMutationRevision = this.player.loadout.revision;
-      this.hud.mutationStrip.replaceChildren(...this.player.loadout.entries().map(({ definition, stacks, slots }) => {
+      this.hud.mutationStrip.replaceChildren(...this.player.loadout.entries().map(({ definition, stacks }) => {
         const chip = document.createElement('span');
-        const slotLabel = slots.map((slot) => slot.replace('-left', 'L').replace('-right', 'R')).join('/');
-        chip.textContent = `${definition.code}${stacks > 1 ? `×${stacks}` : ''} [${slotLabel}]`;
+        chip.dataset.category = definition.category;
+        chip.textContent = `${definition.code}${stacks > 1 ? `×${stacks}` : ''}`;
         return chip;
       }));
+      if (this.loadoutOpen) this.renderLoadout();
     }
+  }
+
+  private updateESP(): void {
+    const sense = this.player.stats.wallSense;
+    const shouldShow = this.dummy.alive && (
+      sense === 2 ||
+      (sense === 1 && this.dummy.noisy)
+    );
+
+    if (!shouldShow || !this.scene.activeCamera) {
+      this.hud.espMarker.classList.add('hidden');
+      return;
+    }
+
+    const engine = this.scene.getEngine();
+    const renderWidth = engine.getRenderWidth();
+    const renderHeight = engine.getRenderHeight();
+    const viewport = this.scene.activeCamera.viewport.toGlobal(renderWidth, renderHeight);
+    const projected = Vector3.Project(
+      this.dummy.eyePosition,
+      Matrix.Identity(),
+      this.scene.getTransformMatrix(),
+      viewport,
+    );
+
+    if (projected.z < 0 || projected.z > 1) {
+      this.hud.espMarker.classList.add('hidden');
+      return;
+    }
+
+    const x = projected.x * (this.canvas.clientWidth / renderWidth);
+    const y = projected.y * (this.canvas.clientHeight / renderHeight);
+    this.hud.espMarker.classList.remove('hidden');
+    this.hud.espMarker.dataset.mode = sense === 2 ? 'xray' : 'echo';
+    this.hud.espMarker.textContent = sense === 2 ? 'XRAY // TARGET' : 'ECHO // SIGNAL';
+    this.hud.espMarker.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -50%)`;
   }
 
   private createTracerPool(): void {
