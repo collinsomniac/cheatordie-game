@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#03040a">
+<title>WebGPU Lorenz — iPhone Test</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:#03040a;color:#f5f7ff;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}body{overflow:hidden}
+#app{height:100%;display:grid;grid-template-rows:auto 1fr}header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px max(12px,env(safe-area-inset-right)) 10px max(12px,env(safe-area-inset-left));border-bottom:1px solid #ffffff18;background:#060810}
+.title{font-size:15px;font-weight:700}.status{font-size:11px;color:#ffffffa5;margin-top:2px;max-width:60vw}.controls{display:flex;gap:7px}button{min-height:38px;padding:0 12px;border-radius:10px;border:1px solid #ffffff24;background:#ffffff10;color:white;font:inherit;font-size:14px}button:disabled{opacity:.4}
+#stage{position:relative;min-height:0}canvas{display:block;width:100%;height:100%}#badge{position:absolute;left:max(10px,env(safe-area-inset-left));bottom:max(10px,env(safe-area-inset-bottom));font-size:10px;color:#ffffffa8;background:#0009;border:1px solid #ffffff18;border-radius:8px;padding:6px 8px;pointer-events:none}
+#error{display:none;position:absolute;inset:0;place-items:center;padding:24px;background:#03040a;text-align:center}#error div{max-width:620px}#error strong{display:block;margin-bottom:8px}#error p{margin:6px 0;font-size:14px;line-height:1.45;color:#ffffffbd}
+</style>
+</head>
+<body>
+<div id="app">
+<header><div><div class="title">Lorenz Attractor · WebGPU</div><div id="status" class="status">Booting JavaScript…</div></div><div class="controls"><button id="pause" disabled>Pause</button><button id="reset" disabled>Reset</button></div></header>
+<div id="stage"><canvas id="c"></canvas><div id="badge">16,384 GPU particles · Lorenz system</div><div id="error"><div><strong id="et">WebGPU initialization failed</strong><p id="em"></p><p id="env"></p></div></div></div>
+</div>
+<script>
+(()=>{
+"use strict";
+const N=16384,c=document.getElementById("c"),s=document.getElementById("status"),pause=document.getElementById("pause"),reset=document.getElementById("reset"),err=document.getElementById("error"),em=document.getElementById("em"),env=document.getElementById("env");
+let device,ctx,pbuf,ubuf,cp,rp,cbg,rbg,run=true,raf=0,last=performance.now(),time=0;
+const status=x=>s.textContent=x;
+const limit=(p,ms,label)=>Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label+" timed out")),ms))]);
+function fail(e){cancelAnimationFrame(raf);status("WebGPU failed");em.textContent=e.message||String(e);env.textContent="secure="+window.isSecureContext+" · navigator.gpu="+!!navigator.gpu+" · "+navigator.userAgent;err.style.display="grid";}
+
+const cs=`
+struct P { pos: vec4<f32>, seed: vec4<f32> };
+struct U { dt:f32,time:f32,iw:f32,ih:f32 };
+@group(0) @binding(0) var<storage,read_write> ps:array<P>;
+@group(0) @binding(1) var<uniform> u:U;
+fn h(x:f32)->f32{return fract(sin(x*91.3458)*47453.5453);}
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) id:vec3<u32>){
+ let i=id.x;if(i>=${N}u){return;}
+ var q=ps[i];var x=q.pos.x;var y=q.pos.y;var z=q.pos.z;
+ let d=u.dt*(0.72+q.seed.x*0.25);
+ for(var k=0;k<2;k=k+1){
+  let dx=10.0*(y-x);let dy=x*(28.0-z)-y;let dz=x*y-2.6666667*z;
+  x+=dx*d;y+=dy*d;z+=dz*d;
+ }
+ if(abs(x)>80.0||abs(y)>100.0||z< -5.0||z>100.0){
+  let t=f32(i)+u.time*0.01;x=(h(t)-0.5)*5.0;y=(h(t+2.1)-0.5)*5.0;z=18.0+h(t+5.7)*10.0;
+ }
+ q.pos=vec4<f32>(x,y,z,1.0);ps[i]=q;
+}`;
+
+const vsfs=`
+struct U { dt:f32,time:f32,iw:f32,ih:f32 };
+@group(0) @binding(0) var<uniform> u:U;
+struct O{@builtin(position) p:vec4<f32>,@location(0) col:vec3<f32>};
+@vertex fn vs(@builtin(vertex_index) v:u32,@location(0) pos:vec4<f32>,@location(1) seed:vec4<f32>)->O{
+ let a=u.time*0.10;let ca=cos(a);let sa=sin(a);
+ let x=pos.x*ca-(pos.z-27.0)*sa;let dep=pos.x*sa+(pos.z-27.0)*ca;let y=pos.y;
+ let sc=0.028*(1.0+dep*0.004);let center=vec2<f32>(x*sc,y*sc*0.72);
+ var corner=vec2<f32>(0.0);if(v==0u){corner=vec2<f32>(-1.0,-0.75);}if(v==1u){corner=vec2<f32>(1.0,-0.75);}if(v==2u){corner=vec2<f32>(0.0,1.2);}
+ let hue=fract(seed.x+pos.z*0.012+u.time*0.015);let col=0.55+0.45*cos(6.28318*(hue+vec3<f32>(0.0,0.67,0.33)));
+ var o:O;o.p=vec4<f32>(center+corner*vec2<f32>(u.iw*3.5,u.ih*3.5),0.0,1.0);o.col=col;return o;
+}
+@fragment fn fs(i:O)->@location(0) vec4<f32>{return vec4<f32>(i.col*1.2,0.72);}
+`;
+
+function resize(){const d=Math.min(devicePixelRatio||1,2),r=c.getBoundingClientRect(),w=Math.max(2,Math.floor(r.width*d)),h=Math.max(2,Math.floor(r.height*d));if(c.width!==w||c.height!==h){c.width=w;c.height=h;}}
+function seed(){const a=new Float32Array(N*8);for(let i=0;i<N;i++){const o=i*8,t=i/N*Math.PI*62,r=.4+3.8*Math.sqrt(Math.random());a[o]=Math.cos(t)*r+(Math.random()-.5)*.5;a[o+1]=Math.sin(t)*r+(Math.random()-.5)*.5;a[o+2]=20+Math.random()*12;a[o+3]=1;a[o+4]=Math.random();a[o+5]=Math.random();a[o+6]=Math.random();}device.queue.writeBuffer(pbuf,0,a);}
+
+async function init(){
+ status("Checking secure Safari context…");
+ if(!window.isSecureContext)throw new Error("Not a secure context. Open the HTTPS GitHub Pages URL directly in Safari.");
+ if(!navigator.gpu)throw new Error("navigator.gpu is unavailable. Safari 26+ on iOS 26+ is required.");
+ status("Requesting WebGPU adapter…");
+ const adapter=await limit(navigator.gpu.requestAdapter(),7000,"Adapter request");
+ if(!adapter)throw new Error("No WebGPU adapter returned.");
+ status("Requesting GPU device…");
+ device=await limit(adapter.requestDevice(),7000,"Device request");
+ ctx=c.getContext("webgpu");if(!ctx)throw new Error("Could not create WebGPU canvas context.");
+ const format=navigator.gpu.getPreferredCanvasFormat();
+ ctx.configure({device,format,alphaMode:"premultiplied"});
+ pbuf=device.createBuffer({size:N*32,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});
+ ubuf=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+ status("Compiling shaders…");
+ const cm=device.createShaderModule({code:cs}),rm=device.createShaderModule({code:vsfs});
+ cp=device.createComputePipeline({layout:"auto",compute:{module:cm,entryPoint:"main"}});
+ rp=device.createRenderPipeline({layout:"auto",vertex:{module:rm,entryPoint:"vs",buffers:[{arrayStride:32,stepMode:"instance",attributes:[{shaderLocation:0,offset:0,format:"float32x4"},{shaderLocation:1,offset:16,format:"float32x4"}]}]},fragment:{module:rm,entryPoint:"fs",targets:[{format,blend:{color:{srcFactor:"src-alpha",dstFactor:"one",operation:"add"},alpha:{srcFactor:"one",dstFactor:"one",operation:"add"}}}]},primitive:{topology:"triangle-list"}});
+ cbg=device.createBindGroup({layout:cp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:pbuf}},{binding:1,resource:{buffer:ubuf}}]});
+ rbg=device.createBindGroup({layout:rp.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:ubuf}}]});
+ seed();resize();pause.disabled=false;reset.disabled=false;status("WebGPU running · GPU compute + render");raf=requestAnimationFrame(frame);
+ device.lost.then(i=>{if(i.reason!=="destroyed")fail(new Error("GPU device lost: "+(i.message||i.reason)));});
+}
+function frame(now){
+ if(!run)return;resize();const e=Math.min((now-last)/1000,.033);last=now;time+=e;device.queue.writeBuffer(ubuf,0,new Float32Array([Math.min(e*.75,.012),time,2/c.width,2/c.height]));
+ const en=device.createCommandEncoder(),p=en.beginComputePass();p.setPipeline(cp);p.setBindGroup(0,cbg);p.dispatchWorkgroups(Math.ceil(N/64));p.end();
+ const r=en.beginRenderPass({colorAttachments:[{view:ctx.getCurrentTexture().createView(),clearValue:{r:.002,g:.004,b:.012,a:1},loadOp:"clear",storeOp:"store"}]});r.setPipeline(rp);r.setBindGroup(0,rbg);r.setVertexBuffer(0,pbuf);r.draw(3,N);r.end();device.queue.submit([en.finish()]);raf=requestAnimationFrame(frame);
+}
+pause.addEventListener("click",()=>{run=!run;pause.textContent=run?"Pause":"Resume";if(run){last=performance.now();raf=requestAnimationFrame(frame)}else cancelAnimationFrame(raf)});
+reset.addEventListener("click",()=>{time=0;seed()});addEventListener("resize",resize,{passive:true});init().catch(fail);
+})();
+</script>
+</body>
+</html>
